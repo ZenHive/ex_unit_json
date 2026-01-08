@@ -14,7 +14,8 @@ defmodule ExUnitJSON.MixProject do
       deps: deps(),
       description: description(),
       package: package(),
-      docs: docs()
+      docs: docs(),
+      dialyzer: dialyzer()
     ]
   end
 
@@ -66,6 +67,13 @@ defmodule ExUnitJSON.MixProject do
       main: "readme",
       extras: ["README.md"],
       source_url: @source_url
+    ]
+  end
+
+  defp dialyzer do
+    [
+      # Include :mix and :ex_unit in PLT for Mix.Task and ExUnit functions
+      plt_add_apps: [:mix, :ex_unit]
     ]
   end
 end
