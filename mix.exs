@@ -1,0 +1,71 @@
+defmodule ExUnitJSON.MixProject do
+  use Mix.Project
+
+  @version "0.1.0"
+  @source_url "https://github.com/yourusername/ex_unit_json"
+
+  def project do
+    [
+      app: :ex_unit_json,
+      version: @version,
+      elixir: "~> 1.18",
+      start_permanent: Mix.env() == :prod,
+      aliases: aliases(),
+      deps: deps(),
+      description: description(),
+      package: package(),
+      docs: docs()
+    ]
+  end
+
+  def application do
+    [
+      extra_applications: [:logger]
+    ]
+  end
+
+  defp deps do
+    [
+      # Runtime
+      {:jason, "~> 1.4"},
+
+      # Dev/Test
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:tidewave, "~> 0.5", only: :dev},
+      {:bandit, "~> 1.0", only: :dev},
+      {:styler, "~> 1.0", only: [:dev, :test], runtime: false}
+    ]
+  end
+
+  defp aliases do
+    [
+      tidewave: [
+        "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4001) end)'"
+      ]
+    ]
+  end
+
+  defp description do
+    """
+    AI-friendly JSON test output for ExUnit.
+    Provides structured JSON output from mix test for use with AI editors like Claude Code.
+    """
+  end
+
+  defp package do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => @source_url}
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md"],
+      source_url: @source_url
+    ]
+  end
+end
