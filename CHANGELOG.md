@@ -4,6 +4,40 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.1.1 (2026-01-09)
+
+### Smart `--failed` Hint
+
+**Added:** 2026-01-09
+
+When `.mix_test_failures` exists and you're running without `--failed`, prints a helpful hint to stderr:
+
+```
+Hint: 3 test(s) failed previously. Use --failed to re-run only those.
+```
+
+Also warns if the failures file is stale (>2 hours old):
+
+```
+Note: .mix_test_failures is 3 hours old. Consider a full run if you changed shared setup.
+```
+
+**Behavior:**
+- Hint only shown when:
+  - `.mix_test_failures` file exists
+  - `--failed` flag is NOT already being used
+  - No specific test file is targeted (e.g., `test/my_test.exs`)
+- Stale warning shown when file is older than 2 hours
+- All output goes to stderr (doesn't pollute JSON stdout)
+- Human-readable age formatting: "less than a minute", "5 minutes", "2 hours"
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Added `maybe_hint_failed/1`, `maybe_hint_stale/1`, `test_path?/1`, `count_previous_failures/1`, `format_age/1`
+- `test/mix/tasks/test_json_test.exs` - Added 10 unit tests for hint helper functions
+- `AGENT.md` - Added "Start Here" section with recommended workflow
+
+---
+
 ## Phase 2 Features
 
 ### `--group-by-error` Flag

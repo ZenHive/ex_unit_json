@@ -171,6 +171,13 @@ Features added to improve AI agent usability:
 
 ### Completed
 
+#### Smart `--failed` Hint ✅ [D:2/B:6 → 3.0]
+When `.mix_test_failures` exists and you're running without `--failed`, prints a hint to stderr suggesting `--failed` for faster iteration. Also warns if the failures file is stale (>2 hours old).
+```
+Hint: 3 test(s) failed previously. Use --failed to re-run only those.
+Note: .mix_test_failures is 3 hours old. Consider a full run if you changed shared setup.
+```
+
 #### `--first-failure` ✅ [D:2/B:5 → 2.5]
 Quick iteration mode - only output first failure in detail.
 ```bash

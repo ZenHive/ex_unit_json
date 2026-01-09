@@ -675,6 +675,111 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
   end
 
+  describe "hint helper functions" do
+    # These tests duplicate the private helper functions for test isolation.
+    # If the implementation changes, update both locations.
+
+    test "test_path?/1 detects .exs files" do
+      assert test_path?("test/foo_test.exs")
+      assert test_path?("test/foo_test.exs:42")
+      assert test_path?("test/nested/bar_test.exs:123")
+      refute test_path?("--failed")
+      refute test_path?("--only")
+      refute test_path?("integration")
+    end
+
+    test "format_age/1 handles less than a minute" do
+      assert format_age(0) == "less than a minute"
+      assert format_age(30) == "less than a minute"
+      assert format_age(59) == "less than a minute"
+    end
+
+    test "format_age/1 handles singular minute" do
+      assert format_age(60) == "1 minute"
+      assert format_age(90) == "1 minute"
+      assert format_age(119) == "1 minute"
+    end
+
+    test "format_age/1 handles plural minutes" do
+      assert format_age(120) == "2 minutes"
+      assert format_age(300) == "5 minutes"
+      assert format_age(3599) == "59 minutes"
+    end
+
+    test "format_age/1 handles singular hour" do
+      assert format_age(3600) == "1 hour"
+      assert format_age(5400) == "1 hour"
+      assert format_age(7199) == "1 hour"
+    end
+
+    test "format_age/1 handles plural hours" do
+      assert format_age(7200) == "2 hours"
+      assert format_age(10_800) == "3 hours"
+      assert format_age(86_400) == "24 hours"
+    end
+
+    test "count_previous_failures/1 counts lines in file" do
+      path = Path.join(System.tmp_dir!(), "test_failures_#{System.unique_integer([:positive])}")
+      File.write!(path, "test/a.exs:1\ntest/b.exs:2\ntest/c.exs:3")
+
+      try do
+        assert count_previous_failures(path) == 3
+      after
+        File.rm!(path)
+      end
+    end
+
+    test "count_previous_failures/1 returns 0 for empty file" do
+      path = Path.join(System.tmp_dir!(), "test_failures_empty_#{System.unique_integer([:positive])}")
+      File.write!(path, "")
+
+      try do
+        assert count_previous_failures(path) == 0
+      after
+        File.rm!(path)
+      end
+    end
+
+    test "count_previous_failures/1 returns 0 for unreadable file" do
+      assert count_previous_failures("/nonexistent/path/to/file") == 0
+    end
+
+    test "count_previous_failures/1 handles single line without trailing newline" do
+      path = Path.join(System.tmp_dir!(), "test_failures_single_#{System.unique_integer([:positive])}")
+      File.write!(path, "test/a.exs:1")
+
+      try do
+        assert count_previous_failures(path) == 1
+      after
+        File.rm!(path)
+      end
+    end
+  end
+
+  # Helper functions duplicating private module logic for test isolation
+  defp test_path?(arg) do
+    String.ends_with?(arg, ".exs") or String.contains?(arg, ".exs:")
+  end
+
+  defp format_age(seconds) when seconds < 60, do: "less than a minute"
+
+  defp format_age(seconds) when seconds < 3600 do
+    mins = div(seconds, 60)
+    if mins == 1, do: "1 minute", else: "#{mins} minutes"
+  end
+
+  defp format_age(seconds) do
+    hours = div(seconds, 3600)
+    if hours == 1, do: "1 hour", else: "#{hours} hours"
+  end
+
+  defp count_previous_failures(path) do
+    case File.read(path) do
+      {:ok, content} -> content |> String.split("\n", trim: true) |> length()
+      {:error, _} -> 0
+    end
+  end
+
   # Helper to parse args using the same logic as the Mix task.
   # NOTE: This duplicates the logic in Mix.Tasks.Test.Json.extract_json_opts/3
   # for test isolation. If you add a new flag, update both locations.

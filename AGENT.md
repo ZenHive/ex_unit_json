@@ -3,6 +3,25 @@
 This file is for AI assistants (Claude Code, Cursor, Copilot, etc.) to understand
 how to use ExUnitJSON effectively.
 
+## Start Here (Default Workflow)
+
+**Most common pattern - fast iteration on failures:**
+
+```bash
+# First run or after code changes
+mix test.json --quiet --summary-only
+
+# Iterating on failures (ALWAYS use --failed for speed)
+mix test.json --quiet --failed --first-failure
+```
+
+**When NOT to use --failed:**
+- After changing test infrastructure, fixtures, or shared setup code
+- After adding new test files (new tests won't be in .mix_test_failures)
+- When you want to verify a full green suite
+
+---
+
 ## When to Use
 
 Use `mix test.json` instead of `mix test` when:

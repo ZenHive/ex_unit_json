@@ -64,12 +64,17 @@ defmodule Mix.Tasks.Test.Json do
 
   require Logger
 
+  @stale_threshold_seconds 7200
+
   @impl Mix.Task
   def run(args) do
     ensure_test_env!()
 
     # Extract only our options, pass everything else to mix test unchanged
     {opts, test_args} = extract_json_opts(args)
+
+    # Hint about --failed when appropriate
+    maybe_hint_failed(test_args)
 
     # Suppress Logger output for cleaner JSON when --quiet is used
     if Keyword.get(opts, :quiet, false) do
@@ -166,5 +171,83 @@ defmodule Mix.Tasks.Test.Json do
       Or run with: MIX_ENV=test mix test.json
       """)
     end
+  end
+
+  @doc false
+  # Prints hint to stderr when --failed would speed up iteration.
+  # Suppressed when: --failed already used, specific file targeted, or no previous failures.
+  defp maybe_hint_failed(test_args) do
+    failures_file = ".mix_test_failures"
+    has_failed_flag = "--failed" in test_args
+    has_specific_target = Enum.any?(test_args, &test_path?/1)
+
+    cond do
+      has_failed_flag ->
+        :ok
+
+      has_specific_target ->
+        :ok
+
+      not File.exists?(failures_file) ->
+        :ok
+
+      true ->
+        count = count_previous_failures(failures_file)
+        IO.puts(:stderr, "Hint: #{count} test(s) failed previously. Use --failed to re-run only those.")
+        maybe_hint_stale(failures_file)
+    end
+  end
+
+  @doc false
+  # Checks if arg looks like a test file path (e.g., "test/foo.exs" or "test/foo.exs:42")
+  defp test_path?(arg) do
+    String.ends_with?(arg, ".exs") or String.contains?(arg, ".exs:")
+  end
+
+  @doc false
+  # Counts number of test identifiers in .mix_test_failures file
+  defp count_previous_failures(path) do
+    case File.read(path) do
+      {:ok, content} -> content |> String.split("\n", trim: true) |> length()
+      {:error, _} -> 0
+    end
+  end
+
+  @doc false
+  # Prints note if .mix_test_failures is older than threshold, suggesting full run
+  defp maybe_hint_stale(failures_file) do
+    # Use time: :local to ensure mtime matches local_time() for comparison
+    case File.stat(failures_file, time: :local) do
+      {:ok, %{mtime: mtime}} ->
+        now = :calendar.local_time()
+
+        age_seconds =
+          :calendar.datetime_to_gregorian_seconds(now) -
+            :calendar.datetime_to_gregorian_seconds(mtime)
+
+        if age_seconds > @stale_threshold_seconds do
+          IO.puts(
+            :stderr,
+            "Note: .mix_test_failures is #{format_age(age_seconds)} old. Consider a full run if you changed shared setup."
+          )
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  @doc false
+  # Formats seconds as human-readable age (e.g., "45 minutes" or "3 hours")
+  defp format_age(seconds) when seconds < 60, do: "less than a minute"
+
+  defp format_age(seconds) when seconds < 3600 do
+    mins = div(seconds, 60)
+    if mins == 1, do: "1 minute", else: "#{mins} minutes"
+  end
+
+  defp format_age(seconds) do
+    hours = div(seconds, 3600)
+    if hours == 1, do: "1 hour", else: "#{hours} hours"
   end
 end
