@@ -39,6 +39,27 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
+    test "parses --first-failure flag" do
+      {opts, rest} = parse_args(["--first-failure"])
+
+      assert opts[:first_failure] == true
+      assert rest == []
+    end
+
+    test "parses single --filter-out flag" do
+      {opts, rest} = parse_args(["--filter-out", "credentials"])
+
+      assert opts[:filter_out] == ["credentials"]
+      assert rest == []
+    end
+
+    test "parses multiple --filter-out flags into list" do
+      {opts, rest} = parse_args(["--filter-out", "credentials", "--filter-out", "API key"])
+
+      assert opts[:filter_out] == ["credentials", "API key"]
+      assert rest == []
+    end
+
     test "parses multiple options together" do
       {opts, rest} = parse_args(["--summary-only", "--failures-only", "--output", "out.json"])
 
@@ -300,6 +321,182 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
 
     @tag :integration
+    test "--first-failure returns only first failed test" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationFirstFailureTest do
+          use ExUnit.Case
+          test "a_passes" do
+            assert true
+          end
+          test "b_fails_first" do
+            assert 1 == 2
+          end
+          test "c_fails_second" do
+            assert 2 == 3
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--first-failure"])
+
+        assert exit_code != 0
+        assert {:ok, json} = decode_json(output)
+        # Summary reflects full suite (all tests ran)
+        assert json["summary"]["total"] == 3
+        assert json["summary"]["passed"] == 1
+        assert json["summary"]["failed"] == 2
+        # Tests array has only the first failure (sorted by file, line, name)
+        assert length(json["tests"]) == 1
+        assert hd(json["tests"])["state"] == "failed"
+        assert hd(json["tests"])["name"] =~ "fails"
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--first-failure returns empty tests when no failures" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationFirstFailureNoFailuresTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--first-failure"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+        assert json["summary"]["total"] == 1
+        assert json["summary"]["passed"] == 1
+        assert json["summary"]["failed"] == 0
+        # Empty tests array when no failures
+        assert json["tests"] == []
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--filter-out marks matching failures as filtered" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationFilterOutTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+          test "fails with credentials error" do
+            flunk("Missing credentials for API")
+          end
+          test "fails with other error" do
+            assert 1 == 2
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--filter-out", "credentials"])
+
+        assert exit_code != 0
+        assert {:ok, json} = decode_json(output)
+        # Summary reflects all tests
+        assert json["summary"]["total"] == 3
+        assert json["summary"]["passed"] == 1
+        assert json["summary"]["failed"] == 2
+
+        # Find the filtered and non-filtered failures
+        tests = json["tests"]
+        assert length(tests) == 3
+
+        credentials_test = Enum.find(tests, &(&1["name"] =~ "credentials"))
+        other_fail_test = Enum.find(tests, &(&1["name"] =~ "other error"))
+        pass_test = Enum.find(tests, &(&1["name"] =~ "passes"))
+
+        # Credentials failure is marked as filtered
+        assert credentials_test["filtered"] == true
+        # Other failure is NOT marked as filtered
+        refute Map.has_key?(other_fail_test, "filtered")
+        # Passing test is NOT marked as filtered
+        refute Map.has_key?(pass_test, "filtered")
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--filter-out with multiple patterns marks all matching failures" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationFilterOutMultipleTest do
+          use ExUnit.Case
+          test "fails with timeout" do
+            flunk("Connection timeout after 30s")
+          end
+          test "fails with rate limit" do
+            flunk("Rate limit exceeded")
+          end
+          test "fails with real bug" do
+            assert 1 == 2
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} =
+          run_mix_test_json([test_file, "--filter-out", "timeout", "--filter-out", "Rate limit"])
+
+        assert exit_code != 0
+        assert {:ok, json} = decode_json(output)
+
+        tests = json["tests"]
+        timeout_test = Enum.find(tests, &(&1["name"] =~ "timeout"))
+        rate_limit_test = Enum.find(tests, &(&1["name"] =~ "rate limit"))
+        bug_test = Enum.find(tests, &(&1["name"] =~ "real bug"))
+
+        # Both expected failures are filtered
+        assert timeout_test["filtered"] == true
+        assert rate_limit_test["filtered"] == true
+        # Real bug is NOT filtered
+        refute Map.has_key?(bug_test, "filtered")
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--filter-out with no matches doesn't add filtered field" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationFilterOutNoMatchTest do
+          use ExUnit.Case
+          test "fails normally" do
+            assert 1 == 2
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--filter-out", "nonexistent"])
+
+        assert exit_code != 0
+        assert {:ok, json} = decode_json(output)
+
+        # No test should have filtered field
+        test = hd(json["tests"])
+        refute Map.has_key?(test, "filtered")
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
     test "--output with invalid path prints error to stderr but doesn't crash" do
       {test_file, cleanup} =
         create_temp_test_file("""
@@ -421,11 +618,13 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
   end
 
-  # Helper to parse args using the same logic as the Mix task
+  # Helper to parse args using the same logic as the Mix task.
+  # NOTE: This duplicates the logic in Mix.Tasks.Test.Json.extract_json_opts/3
+  # for test isolation. If you add a new flag, update both locations.
   defp parse_args(args), do: extract_json_opts(args, [], [])
 
   defp extract_json_opts([], opts, remaining) do
-    {Enum.reverse(opts), Enum.reverse(remaining)}
+    {merge_list_opts(Enum.reverse(opts)), Enum.reverse(remaining)}
   end
 
   defp extract_json_opts(["--summary-only" | rest], opts, remaining) do
@@ -434,6 +633,14 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   defp extract_json_opts(["--failures-only" | rest], opts, remaining) do
     extract_json_opts(rest, [{:failures_only, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--first-failure" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:first_failure, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--filter-out", value | rest], opts, remaining) do
+    extract_json_opts(rest, [{:filter_out, value} | opts], remaining)
   end
 
   defp extract_json_opts(["--output", value | rest], opts, remaining) do
@@ -446,6 +653,17 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   defp extract_json_opts([arg | rest], opts, remaining) do
     extract_json_opts(rest, opts, [arg | remaining])
+  end
+
+  defp merge_list_opts(opts) do
+    filters = Keyword.get_values(opts, :filter_out)
+    rest = Keyword.delete(opts, :filter_out)
+
+    if filters == [] do
+      rest
+    else
+      [{:filter_out, filters} | rest]
+    end
   end
 
   # Helper to create a temporary test file

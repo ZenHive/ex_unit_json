@@ -10,23 +10,27 @@ defmodule ExUnitJSON.Config do
 
     * `:summary_only` - When true, omit individual test results
     * `:failures_only` - When true, include only failed tests
+    * `:first_failure` - When true, include only the first failed test
+    * `:filter_out` - List of patterns to mark matching failures as filtered
     * `:output` - File path to write JSON output (default: stdout)
     * `:compact` - When true, output JSONL with minimal fields
 
   """
 
   @typedoc "Valid option keys for ExUnitJSON configuration"
-  @type option :: :summary_only | :failures_only | :output | :compact
+  @type option :: :summary_only | :failures_only | :first_failure | :filter_out | :output | :compact
 
   @typedoc "Keyword list of ExUnitJSON options"
   @type opts :: [
           summary_only: boolean(),
           failures_only: boolean(),
+          first_failure: boolean(),
+          filter_out: [String.t()],
           output: String.t() | nil,
           compact: boolean()
         ]
 
-  @valid_options [:summary_only, :failures_only, :output, :compact]
+  @valid_options [:summary_only, :failures_only, :first_failure, :filter_out, :output, :compact]
 
   @doc """
   Gets options from Application environment.
@@ -84,6 +88,22 @@ defmodule ExUnitJSON.Config do
   @spec failures_only?() :: boolean()
   def failures_only? do
     get_opt(:failures_only, false)
+  end
+
+  @doc """
+  Checks if first-failure mode is enabled.
+  """
+  @spec first_failure?() :: boolean()
+  def first_failure? do
+    get_opt(:first_failure, false)
+  end
+
+  @doc """
+  Gets the list of filter-out patterns.
+  """
+  @spec filter_out_patterns() :: [String.t()]
+  def filter_out_patterns do
+    get_opt(:filter_out, [])
   end
 
   @doc """

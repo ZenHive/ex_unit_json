@@ -168,8 +168,13 @@ defmodule ExUnitJSON.Formatter do
     # Add tests unless summary_only
     doc =
       case filter_tests(tests, state.opts) do
-        nil -> doc
-        filtered -> Map.put(doc, :tests, filtered)
+        nil ->
+          doc
+
+        filtered ->
+          patterns = Keyword.get(state.opts, :filter_out, [])
+          marked = apply_filter_out(filtered, patterns)
+          Map.put(doc, :tests, marked)
       end
 
     # Add module failures if any
@@ -236,14 +241,53 @@ defmodule ExUnitJSON.Formatter do
   @doc false
   # Filters tests based on configuration options.
   # Returns nil for summary_only (omit tests array), filtered list, or all tests.
+  # Priority: summary_only > first_failure > failures_only > all
   @spec filter_tests([map()], keyword()) :: [map()] | nil
   defp filter_tests(tests, opts) do
     cond do
-      Keyword.get(opts, :summary_only, false) -> nil
-      Keyword.get(opts, :failures_only, false) -> Enum.filter(tests, &(&1.state == "failed"))
-      true -> tests
+      Keyword.get(opts, :summary_only, false) ->
+        nil
+
+      Keyword.get(opts, :first_failure, false) ->
+        tests
+        |> Enum.filter(&(&1.state == "failed"))
+        |> Enum.take(1)
+
+      Keyword.get(opts, :failures_only, false) ->
+        Enum.filter(tests, &(&1.state == "failed"))
+
+      true ->
+        tests
     end
   end
+
+  @doc false
+  # Marks failed tests as filtered if their failure message matches any pattern.
+  # Returns tests unchanged if no patterns provided.
+  @spec apply_filter_out([map()], [String.t()]) :: [map()]
+  defp apply_filter_out(tests, []), do: tests
+
+  defp apply_filter_out(tests, patterns) do
+    Enum.map(tests, fn test ->
+      if test.state == "failed" and failure_matches_pattern?(test, patterns) do
+        Map.put(test, :filtered, true)
+      else
+        test
+      end
+    end)
+  end
+
+  @doc false
+  # Checks if any failure message in the test matches any of the patterns.
+  @spec failure_matches_pattern?(map(), [String.t()]) :: boolean()
+  defp failure_matches_pattern?(%{failures: failures}, patterns) when is_list(failures) do
+    Enum.any?(failures, fn failure ->
+      message = Map.get(failure, :message, "")
+      Enum.any?(patterns, fn pattern -> String.contains?(message, pattern) end)
+    end)
+  end
+
+  defp failure_matches_pattern?(_, _), do: false
 
   @doc false
   # Builds compact JSONL output - one JSON object per line, minimal fields.
@@ -253,6 +297,7 @@ defmodule ExUnitJSON.Formatter do
   defp build_compact_output(state, times_us) do
     tests = state.tests |> Enum.reverse() |> sort_tests()
     filtered = filter_tests(tests, state.opts)
+    patterns = Keyword.get(state.opts, :filter_out, [])
 
     test_lines =
       case filtered do
@@ -260,7 +305,9 @@ defmodule ExUnitJSON.Formatter do
           []
 
         test_list ->
-          Enum.map(test_list, &compact_test_line/1)
+          test_list
+          |> apply_filter_out(patterns)
+          |> Enum.map(&compact_test_line/1)
       end
 
     summary = build_summary(tests, times_us)
@@ -272,7 +319,7 @@ defmodule ExUnitJSON.Formatter do
 
   @doc false
   # Encodes a single test as a compact JSON object.
-  # Keys: f=file:line, n=name, s=state, e=error (first line, only if failed)
+  # Keys: f=file:line, n=name, s=state, e=error (first line, only if failed), x=filtered
   defp compact_test_line(test) do
     base = %{
       "f" => "#{test.file}:#{test.line}",
@@ -295,6 +342,14 @@ defmodule ExUnitJSON.Formatter do
         Map.put(base, "e", error_msg)
       else
         base
+      end
+
+    # Add filtered flag if present
+    compact =
+      if Map.get(test, :filtered, false) do
+        Map.put(compact, "x", true)
+      else
+        compact
       end
 
     :json.encode(compact)

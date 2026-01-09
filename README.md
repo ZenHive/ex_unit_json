@@ -9,7 +9,7 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 - Drop-in replacement for `mix test` with JSON output
 - All test states: passed, failed, skipped, excluded
 - Detailed failure information with assertion values and stacktraces
-- Filtering options: `--summary-only`, `--failures-only`
+- Filtering options: `--summary-only`, `--failures-only`, `--first-failure`, `--filter-out`
 - File output: `--output results.json`
 - Deterministic test ordering for reproducible output
 - No runtime dependencies (uses Elixir 1.18+ built-in `:json`)
@@ -59,6 +59,12 @@ mix test.json --summary-only
 
 # Output only failed tests
 mix test.json --failures-only
+
+# Output only the first failed test (quick iteration)
+mix test.json --first-failure
+
+# Mark failures matching pattern as filtered (can repeat)
+mix test.json --filter-out "credentials" --filter-out "rate limit"
 
 # Write JSON to a file instead of stdout
 mix test.json --output results.json

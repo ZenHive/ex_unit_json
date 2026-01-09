@@ -100,6 +100,40 @@ defmodule ExUnitJSON.ConfigTest do
     end
   end
 
+  describe "first_failure?/0" do
+    test "returns true when first_failure is enabled" do
+      Application.put_env(:ex_unit_json, :opts, first_failure: true)
+      assert Config.first_failure?() == true
+    end
+
+    test "returns false when first_failure is disabled" do
+      Application.put_env(:ex_unit_json, :opts, first_failure: false)
+      assert Config.first_failure?() == false
+    end
+
+    test "returns false when first_failure is not set" do
+      Application.put_env(:ex_unit_json, :opts, [])
+      assert Config.first_failure?() == false
+    end
+  end
+
+  describe "filter_out_patterns/0" do
+    test "returns list of patterns when set" do
+      Application.put_env(:ex_unit_json, :opts, filter_out: ["credentials", "API key"])
+      assert Config.filter_out_patterns() == ["credentials", "API key"]
+    end
+
+    test "returns empty list when not set" do
+      Application.put_env(:ex_unit_json, :opts, [])
+      assert Config.filter_out_patterns() == []
+    end
+
+    test "returns single pattern as list" do
+      Application.put_env(:ex_unit_json, :opts, filter_out: ["timeout"])
+      assert Config.filter_out_patterns() == ["timeout"]
+    end
+  end
+
   describe "output_path/0" do
     test "returns file path when output is set" do
       Application.put_env(:ex_unit_json, :opts, output: "/tmp/results.json")

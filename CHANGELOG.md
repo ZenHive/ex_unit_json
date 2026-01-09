@@ -4,6 +4,64 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## Phase 2 Features
+
+### `--filter-out` Flag
+
+**Added:** 2026-01-09
+
+Mark failures matching a pattern as `"filtered": true` in JSON output. Can be used multiple times to filter multiple patterns.
+
+```bash
+mix test.json --filter-out "credentials" --filter-out "rate limit"
+```
+
+**Use case:** Filter expected failures (missing API credentials, rate limits, timeouts) to focus on real bugs. Tests still appear in output but are marked as filtered so AI tools can distinguish them.
+
+**Behavior:**
+- Runs all tests (full suite)
+- Summary counts remain unchanged (filtered failures still count as failures)
+- Failed tests whose error message contains any pattern get `"filtered": true` added
+- Non-matching failures remain unmarked
+- Passing/skipped tests are never marked
+- Works with both regular JSON and `--compact` JSONL output (uses `"x": true` in compact mode)
+
+**Files modified:**
+- `lib/ex_unit_json/config.ex` - Added `:filter_out` option
+- `lib/mix/tasks/test_json.ex` - Added `--filter-out` flag parsing with list accumulation
+- `lib/ex_unit_json/formatter.ex` - Added `apply_filter_out/2` and `failure_matches_pattern?/2`
+- `test/ex_unit_json/config_test.exs` - Added tests for filter_out_patterns/0
+- `test/mix/tasks/test_json_test.exs` - Added parsing and integration tests
+
+---
+
+### `--first-failure` Flag
+
+**Added:** 2026-01-09
+
+Quick iteration mode - outputs only the first failed test in detail while still running the full suite.
+
+```bash
+mix test.json --first-failure
+```
+
+**Use case:** When fixing failing tests one at a time, reduces output noise by showing only the first failure. Summary still reflects the full suite status.
+
+**Behavior:**
+- Runs all tests (full suite)
+- Summary shows counts for all tests
+- Tests array contains only the first failed test (by file, line, name order)
+- Returns empty tests array if no failures
+
+**Files modified:**
+- `lib/ex_unit_json/config.ex` - Added `:first_failure` option
+- `lib/mix/tasks/test_json.ex` - Added `--first-failure` flag parsing
+- `lib/ex_unit_json/formatter.ex` - Updated filter logic
+- `test/ex_unit_json/config_test.exs` - Added tests for first_failure?/0
+- `test/mix/tasks/test_json_test.exs` - Added parsing and integration tests
+
+---
+
 ## Bug Fixes
 
 ### Fix: Graceful error handling for file output

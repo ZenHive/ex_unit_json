@@ -525,18 +525,23 @@ defmodule ExUnitJSON.FormatterTest do
     end
 
     test "outputs to stdout when no output file specified" do
-      # This tests that the code path works, though we can't easily capture stdout
-      # from a GenServer. We verify by checking no error is raised.
-      Application.put_env(:ex_unit_json, :opts, [])
+      # Use file output for testing to avoid polluting test output.
+      # The stdout code path is implicitly tested via `mix test.json`.
+      output_file = Path.join(System.tmp_dir!(), "stdout_test_#{:rand.uniform(1_000_000)}.json")
+      Application.put_env(:ex_unit_json, :opts, output: output_file)
       {:ok, pid} = Formatter.start_link()
 
       GenServer.cast(pid, {:suite_started, seed: 1})
       GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
       GenServer.cast(pid, {:suite_finished, %{async: 0, sync: 0}})
+      GenServer.call(pid, :get_state)
 
-      # If we get here without crash, stdout output worked
-      state = GenServer.call(pid, :get_state)
-      assert state.seed == 1
+      {:ok, content} = File.read(output_file)
+      File.rm!(output_file)
+
+      json = :json.decode(content)
+      assert json["version"] == 1
+      assert json["seed"] == 1
     end
   end
 
@@ -686,7 +691,9 @@ defmodule ExUnitJSON.FormatterTest do
 
   describe "integration: full event sequence" do
     test "handles complete test suite lifecycle" do
-      Application.put_env(:ex_unit_json, :opts, [])
+      # Use file output to avoid polluting test output with JSON
+      output_file = Path.join(System.tmp_dir!(), "integration_test_#{:rand.uniform(1_000_000)}.json")
+      Application.put_env(:ex_unit_json, :opts, output: output_file)
       {:ok, pid} = Formatter.start_link()
 
       # 1. Suite starts
@@ -725,9 +732,15 @@ defmodule ExUnitJSON.FormatterTest do
 
       # 4. Suite finishes
       GenServer.cast(pid, {:suite_finished, %{async: 1000, sync: 500}})
-
-      # Verify final state
       state = GenServer.call(pid, :get_state)
+
+      # Verify JSON was written to file
+      {:ok, content} = File.read(output_file)
+      File.rm!(output_file)
+
+      json = :json.decode(content)
+      assert json["version"] == 1
+      assert json["seed"] == 54_321
 
       # Check seed was captured
       assert state.seed == 54_321
@@ -755,7 +768,7 @@ defmodule ExUnitJSON.FormatterTest do
   defp json_decode(string) do
     {:ok, :json.decode(string)}
   rescue
-    _ -> {:error, :invalid_json}
+    e in [ArgumentError, ErlangError] -> {:error, {:decode_failed, Exception.message(e)}}
   end
 
   # Helper to build ExUnit.Test structs for testing

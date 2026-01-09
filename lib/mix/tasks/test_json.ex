@@ -30,8 +30,20 @@ defmodule Mix.Tasks.Test.Json do
 
     * `--summary-only` - Output only the summary, omit individual test results
     * `--failures-only` - Output only failed tests
+    * `--first-failure` - Output only the first failed test (quick iteration)
+    * `--filter-out PATTERN` - Mark failures matching pattern as filtered (can repeat)
     * `--output FILE` - Write JSON to file instead of stdout
     * `--compact` - JSONL output with minimal fields (one line per test)
+
+  ## Flag Precedence
+
+  When multiple filtering flags are combined, they follow this priority:
+
+    1. `--summary-only` - Highest priority, omits tests array entirely
+    2. `--first-failure` - Returns only the first failed test
+    3. `--failures-only` - Returns all failed tests
+
+  For example, `--summary-only --failures-only` will omit the tests array.
 
   ## Examples
 
@@ -73,7 +85,7 @@ defmodule Mix.Tasks.Test.Json do
   defp extract_json_opts(args), do: extract_json_opts(args, [], [])
 
   defp extract_json_opts([], opts, remaining) do
-    {Enum.reverse(opts), Enum.reverse(remaining)}
+    {merge_list_opts(Enum.reverse(opts)), Enum.reverse(remaining)}
   end
 
   defp extract_json_opts(["--summary-only" | rest], opts, remaining) do
@@ -84,6 +96,10 @@ defmodule Mix.Tasks.Test.Json do
     extract_json_opts(rest, [{:failures_only, true} | opts], remaining)
   end
 
+  defp extract_json_opts(["--first-failure" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:first_failure, true} | opts], remaining)
+  end
+
   defp extract_json_opts(["--output", value | rest], opts, remaining) do
     extract_json_opts(rest, [{:output, value} | opts], remaining)
   end
@@ -92,8 +108,26 @@ defmodule Mix.Tasks.Test.Json do
     extract_json_opts(rest, [{:compact, true} | opts], remaining)
   end
 
+  defp extract_json_opts(["--filter-out", value | rest], opts, remaining) do
+    extract_json_opts(rest, [{:filter_out, value} | opts], remaining)
+  end
+
   defp extract_json_opts([arg | rest], opts, remaining) do
     extract_json_opts(rest, opts, [arg | remaining])
+  end
+
+  @doc false
+  # Merges repeated options (like --filter-out) into a single list value.
+  # E.g., [{:filter_out, "a"}, {:filter_out, "b"}] -> [{:filter_out, ["a", "b"]}]
+  defp merge_list_opts(opts) do
+    filters = Keyword.get_values(opts, :filter_out)
+    rest = Keyword.delete(opts, :filter_out)
+
+    if filters == [] do
+      rest
+    else
+      [{:filter_out, filters} | rest]
+    end
   end
 
   @doc false

@@ -169,20 +169,23 @@ Features added to improve AI agent usability:
 
 **Note:** Prioritized by ROI (Benefit/Difficulty). Higher priority = better ROI.
 
-### High Priority (ROI > 2.0)
+### Completed
 
-#### `--first-failure` [D:2/B:5 → 2.5] 🎯
+#### `--first-failure` ✅ [D:2/B:5 → 2.5]
 Quick iteration mode - only output first failure in detail.
 ```bash
 mix test.json --first-failure
 ```
 
-#### `--filter-out "pattern"` [D:4/B:8 → 2.0] 🎯
-Exclude failures matching pattern from output. Mark as `"filtered": true` in JSON rather than hiding.
+#### `--filter-out "pattern"` ✅ [D:4/B:8 → 2.0]
+Mark failures matching pattern as `"filtered": true` in JSON. Use case: Filter expected failures (missing credentials, rate limits) to focus on real bugs.
 ```bash
 mix test.json --filter-out "credentials" --filter-out "API key"
 ```
-Use case: Filter expected failures (missing credentials, rate limits) to focus on real bugs.
+
+### High Priority (ROI > 2.0)
+
+(No remaining high-priority items)
 
 ### Medium Priority (ROI 1.0-2.0)
 
