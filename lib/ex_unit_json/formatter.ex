@@ -126,8 +126,9 @@ defmodule ExUnitJSON.Formatter do
   end
 
   @doc false
-  # Builds the complete JSON document from accumulated state
-  @spec build_document(t(), %{async: non_neg_integer(), sync: non_neg_integer()}) :: map()
+  # Builds the complete JSON document from accumulated state.
+  # Accepts any ExUnit times_us map format (old or new).
+  @spec build_document(t(), map()) :: map()
   defp build_document(state, times_us) do
     tests = state.tests |> Enum.reverse() |> sort_tests()
 
@@ -164,12 +165,15 @@ defmodule ExUnitJSON.Formatter do
 
   @doc false
   # Builds summary statistics from all tests.
-  @spec build_summary([map()], %{async: non_neg_integer(), sync: non_neg_integer()}) :: map()
+  # Handles both old ExUnit format (%{async, sync}) and new format (%{async, run, load}).
+  @spec build_summary([map()], map()) :: map()
   defp build_summary(tests, times_us) do
     counts =
       Enum.reduce(tests, %{passed: 0, failed: 0, skipped: 0, excluded: 0, invalid: 0}, fn test, acc ->
         increment_state_count(acc, test.state)
       end)
+
+    duration_us = extract_duration(times_us)
 
     %{
       total: length(tests),
@@ -178,10 +182,19 @@ defmodule ExUnitJSON.Formatter do
       skipped: counts.skipped,
       excluded: counts.excluded,
       invalid: counts.invalid,
-      duration_us: times_us.async + times_us.sync,
+      duration_us: duration_us,
       result: if(counts.failed > 0 or counts.invalid > 0, do: "failed", else: "passed")
     }
   end
+
+  @doc false
+  # Extracts total duration from ExUnit times_us map.
+  # Handles both old format (%{async, sync}) and new format (%{async, run, load}).
+  @spec extract_duration(map()) :: non_neg_integer()
+  defp extract_duration(%{run: run}) when is_integer(run), do: run
+  defp extract_duration(%{async: async, sync: sync}), do: async + sync
+  defp extract_duration(%{async: async}), do: async
+  defp extract_duration(_), do: 0
 
   @doc false
   # Sorts tests deterministically by file, line, name

@@ -25,6 +25,12 @@ defmodule ExUnitJSON.MixProject do
     ]
   end
 
+  def cli do
+    [
+      preferred_envs: ["test.json": :test]
+    ]
+  end
+
   defp deps do
     [
       # Dev/Test
