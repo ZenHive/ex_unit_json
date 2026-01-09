@@ -247,49 +247,23 @@ defmodule ExUnitJSON.FormatterTest do
   end
 
   describe "handle_cast {:suite_finished, times_us}" do
-    # Helper to run formatter with file output and read JSON result
-    defp run_formatter_to_file(setup_fn) do
+    # Unified helper to run formatter with file output and read JSON result.
+    # Options:
+    #   :opts - additional formatter options (default: [])
+    #   :times_us - custom times_us map (default: %{async: 1000, sync: 500})
+    defp run_formatter(setup_fn, options \\ []) do
       output_file = Path.join(System.tmp_dir!(), "test_#{:rand.uniform(1_000_000)}.json")
-      Application.put_env(:ex_unit_json, :opts, output: output_file)
-      {:ok, pid} = Formatter.start_link()
+      formatter_opts = Keyword.get(options, :opts, [])
+      times_us = Keyword.get(options, :times_us, %{async: 1000, sync: 500})
 
-      setup_fn.(pid)
-
-      GenServer.cast(pid, {:suite_finished, %{async: 1000, sync: 500}})
-      # Block until cast is processed
-      GenServer.call(pid, :get_state)
-
-      {:ok, content} = File.read(output_file)
-      File.rm!(output_file)
-      :json.decode(content)
-    end
-
-    # Helper with custom times_us
-    defp run_formatter_to_file(setup_fn, times_us) do
-      output_file = Path.join(System.tmp_dir!(), "test_#{:rand.uniform(1_000_000)}.json")
-      Application.put_env(:ex_unit_json, :opts, output: output_file)
-      {:ok, pid} = Formatter.start_link()
-
-      setup_fn.(pid)
-
-      GenServer.cast(pid, {:suite_finished, times_us})
-      GenServer.call(pid, :get_state)
-
-      {:ok, content} = File.read(output_file)
-      File.rm!(output_file)
-      :json.decode(content)
-    end
-
-    # Helper for options other than file output
-    defp run_formatter_with_opts(opts, setup_fn) do
-      output_file = Path.join(System.tmp_dir!(), "test_#{:rand.uniform(1_000_000)}.json")
-      merged_opts = Keyword.put(opts, :output, output_file)
+      merged_opts = Keyword.put(formatter_opts, :output, output_file)
       Application.put_env(:ex_unit_json, :opts, merged_opts)
       {:ok, pid} = Formatter.start_link()
 
       setup_fn.(pid)
 
-      GenServer.cast(pid, {:suite_finished, %{async: 0, sync: 0}})
+      GenServer.cast(pid, {:suite_finished, times_us})
+      # Block until cast is processed
       GenServer.call(pid, :get_state)
 
       {:ok, content} = File.read(output_file)
@@ -299,7 +273,7 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "outputs valid JSON with version and seed" do
       json =
-        run_formatter_to_file(fn pid ->
+        run_formatter(fn pid ->
           GenServer.cast(pid, {:suite_started, seed: 12_345})
           GenServer.cast(pid, {:test_finished, build_test(name: :"test passes", state: nil)})
         end)
@@ -310,7 +284,7 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "calculates summary statistics correctly" do
       json =
-        run_formatter_to_file(fn pid ->
+        run_formatter(fn pid ->
           GenServer.cast(pid, {:suite_started, seed: 1})
           # 2 passed, 1 failed, 1 skipped, 1 excluded
           GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
@@ -334,13 +308,13 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "result is 'passed' when no failures" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 1})
             GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
             GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:skipped, "pending"})})
           end,
-          %{async: 100, sync: 50}
+          times_us: %{async: 100, sync: 50}
         )
 
       assert json["summary"]["result"] == "passed"
@@ -348,7 +322,7 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "sorts tests deterministically by file, line, name" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 1})
             # Add tests in random order
@@ -357,7 +331,7 @@ defmodule ExUnitJSON.FormatterTest do
             GenServer.cast(pid, {:test_finished, build_test_at(name: :m_test, file: "a.exs", line: 20)})
             GenServer.cast(pid, {:test_finished, build_test_at(name: :m_test, file: "a.exs", line: 10)})
           end,
-          %{async: 0, sync: 0}
+          times_us: %{async: 0, sync: 0}
         )
 
       names = Enum.map(json["tests"], & &1["name"])
@@ -368,10 +342,13 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "summary_only omits tests array" do
       json =
-        run_formatter_with_opts([summary_only: true], fn pid ->
-          GenServer.cast(pid, {:suite_started, seed: 1})
-          GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
-        end)
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+          end,
+          opts: [summary_only: true]
+        )
 
       assert Map.has_key?(json, "summary")
       refute Map.has_key?(json, "tests")
@@ -379,12 +356,20 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "failures_only filters to failed tests" do
       json =
-        run_formatter_with_opts([failures_only: true], fn pid ->
-          GenServer.cast(pid, {:suite_started, seed: 1})
-          GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
-          GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:failed, [{:error, %RuntimeError{}, []}]})})
-          GenServer.cast(pid, {:test_finished, build_test(name: :t3, state: nil)})
-        end)
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+
+            GenServer.cast(
+              pid,
+              {:test_finished, build_test(name: :t2, state: {:failed, [{:error, %RuntimeError{}, []}]})}
+            )
+
+            GenServer.cast(pid, {:test_finished, build_test(name: :t3, state: nil)})
+          end,
+          opts: [failures_only: true]
+        )
 
       # Summary includes all tests
       assert json["summary"]["total"] == 3
@@ -398,11 +383,11 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "empty test suite produces valid output" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 99})
           end,
-          %{async: 0, sync: 0}
+          times_us: %{async: 0, sync: 0}
         )
 
       assert json["summary"]["total"] == 0
@@ -412,13 +397,13 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "all excluded tests result in 'passed'" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 1})
             GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:excluded, "tag"})})
             GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:excluded, "tag"})})
           end,
-          %{async: 0, sync: 0}
+          times_us: %{async: 0, sync: 0}
         )
 
       assert json["summary"]["result"] == "passed"
@@ -427,12 +412,12 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "handles new ExUnit times_us format with :run key" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 1})
             GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
           end,
-          %{run: 5000, async: 1000, load: 500}
+          times_us: %{run: 5000, async: 1000, load: 500}
         )
 
       # New format uses :run for total duration
@@ -441,12 +426,12 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "handles times_us with only :async key" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 1})
             GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
           end,
-          %{async: 3000}
+          times_us: %{async: 3000}
         )
 
       assert json["summary"]["duration_us"] == 3000
@@ -454,12 +439,12 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "handles empty times_us map" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 1})
             GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
           end,
-          %{}
+          times_us: %{}
         )
 
       assert json["summary"]["duration_us"] == 0
@@ -467,12 +452,12 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "handles invalid test state" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 1})
             GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:invalid, SomeModule})})
           end,
-          %{async: 0, sync: 0}
+          times_us: %{async: 0, sync: 0}
         )
 
       assert json["summary"]["invalid"] == 1
@@ -481,7 +466,7 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "includes module_failures when present" do
       json =
-        run_formatter_to_file(
+        run_formatter(
           fn pid ->
             GenServer.cast(pid, {:suite_started, seed: 1})
             GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
@@ -497,7 +482,7 @@ defmodule ExUnitJSON.FormatterTest do
 
             GenServer.cast(pid, {:module_finished, module})
           end,
-          %{async: 0, sync: 0}
+          times_us: %{async: 0, sync: 0}
         )
 
       assert Map.has_key?(json, "module_failures")
@@ -836,5 +821,167 @@ defmodule ExUnitJSON.FormatterTest do
       tags: tags,
       logs: ""
     }
+  end
+
+  describe "group_by_error mode" do
+    test "adds error_groups when failures exist" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            error = %RuntimeError{message: "connection refused"}
+            test = build_test(name: :t1, state: {:failed, [{:error, error, []}]})
+
+            GenServer.cast(pid, {:test_finished, test})
+          end,
+          opts: [group_by_error: true],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      assert Map.has_key?(json, "error_groups")
+      assert length(json["error_groups"]) == 1
+    end
+
+    test "omits error_groups when no failures" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+          end,
+          opts: [group_by_error: true],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      refute Map.has_key?(json, "error_groups")
+    end
+
+    test "groups failures by first line of error message" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            # 3 tests with same error message
+            error1 = %RuntimeError{message: "connection refused\ndetails here"}
+
+            for i <- 1..3 do
+              test = build_test(name: :"t#{i}", state: {:failed, [{:error, error1, []}]})
+              GenServer.cast(pid, {:test_finished, test})
+            end
+
+            # 1 test with different error
+            error2 = %RuntimeError{message: "timeout exceeded"}
+            test = build_test(name: :t4, state: {:failed, [{:error, error2, []}]})
+            GenServer.cast(pid, {:test_finished, test})
+          end,
+          opts: [group_by_error: true],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      assert length(json["error_groups"]) == 2
+
+      # Sorted by count descending
+      [group1, group2] = json["error_groups"]
+      assert group1["count"] == 3
+      assert group1["pattern"] == "connection refused"
+      assert group2["count"] == 1
+      assert group2["pattern"] == "timeout exceeded"
+    end
+
+    test "error_groups include example with test details" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            error = %RuntimeError{message: "boom"}
+
+            test =
+              build_test_at(
+                name: :example_test,
+                file: "test/example.exs",
+                line: 42,
+                state: {:failed, [{:error, error, []}]}
+              )
+
+            GenServer.cast(pid, {:test_finished, test})
+          end,
+          opts: [group_by_error: true],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      [group] = json["error_groups"]
+
+      assert Map.has_key?(group, "example")
+      assert group["example"]["name"] == "example_test"
+      assert group["example"]["file"] == "test/example.exs"
+      assert group["example"]["line"] == 42
+    end
+
+    test "works with failures_only filter" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            # Mix of passed and failed
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+
+            error = %RuntimeError{message: "error"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:failed, [{:error, error, []}]})})
+          end,
+          opts: [group_by_error: true, failures_only: true],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      # tests array only has failures due to failures_only
+      assert length(json["tests"]) == 1
+      # error_groups still works
+      assert length(json["error_groups"]) == 1
+    end
+
+    test "handles tests with no failure message" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            # Create a failed test with empty failures list (edge case)
+            test = build_test(name: :t1, state: {:failed, []})
+            GenServer.cast(pid, {:test_finished, test})
+          end,
+          opts: [group_by_error: true],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      # Should handle gracefully - "(unknown error)" pattern
+      assert length(json["error_groups"]) == 1
+      assert hd(json["error_groups"])["pattern"] == "(unknown error)"
+    end
+
+    test "truncates very long error patterns" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            # Error message longer than 200 chars
+            long_message = String.duplicate("x", 300)
+            error = %RuntimeError{message: long_message}
+            test = build_test(name: :t1, state: {:failed, [{:error, error, []}]})
+
+            GenServer.cast(pid, {:test_finished, test})
+          end,
+          opts: [group_by_error: true],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      [group] = json["error_groups"]
+      # Should be truncated to 200 chars + "..."
+      assert String.length(group["pattern"]) == 203
+      assert String.ends_with?(group["pattern"], "...")
+    end
   end
 end

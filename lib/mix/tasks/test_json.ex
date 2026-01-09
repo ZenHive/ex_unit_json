@@ -34,6 +34,7 @@ defmodule Mix.Tasks.Test.Json do
     * `--filter-out PATTERN` - Mark failures matching pattern as filtered (can repeat)
     * `--output FILE` - Write JSON to file instead of stdout
     * `--compact` - JSONL output with minimal fields (one line per test)
+    * `--group-by-error` - Group failures by similar error message
 
   ## Flag Precedence
 
@@ -110,6 +111,10 @@ defmodule Mix.Tasks.Test.Json do
 
   defp extract_json_opts(["--filter-out", value | rest], opts, remaining) do
     extract_json_opts(rest, [{:filter_out, value} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--group-by-error" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:group_by_error, true} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do

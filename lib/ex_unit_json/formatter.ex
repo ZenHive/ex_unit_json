@@ -19,13 +19,16 @@ defmodule ExUnitJSON.Formatter do
     * `{:suite_started, opts}` - Captures seed and start time
     * `{:test_finished, test}` - Accumulates individual test results
     * `{:module_finished, module}` - Tracks module-level failures (setup_all)
-    * `{:suite_finished, times_us}` - Outputs final JSON (Task 5)
+    * `{:suite_finished, times_us}` - Outputs final JSON
 
   """
 
   use GenServer
 
+  alias ExUnitJSON.CompactOutput
   alias ExUnitJSON.Config
+  alias ExUnitJSON.ErrorGroups
+  alias ExUnitJSON.Filters
   alias ExUnitJSON.JSONEncoder
 
   defstruct [:seed, :start_time, tests: [], modules: [], opts: []]
@@ -80,11 +83,15 @@ defmodule ExUnitJSON.Formatter do
   end
 
   def handle_cast({:suite_finished, times_us}, state) do
+    tests = state.tests |> Enum.reverse() |> sort_tests()
+    summary = build_summary(tests, times_us)
+
     output =
       if Config.compact?() do
-        build_compact_output(state, times_us)
+        filtered_tests = Filters.filter_tests(tests, state.opts)
+        CompactOutput.build_compact_output(filtered_tests, summary, state.opts)
       else
-        document = build_document(state, times_us)
+        document = build_document(state, tests, summary)
         :json.encode(document)
       end
 
@@ -154,36 +161,56 @@ defmodule ExUnitJSON.Formatter do
 
   @doc false
   # Builds the complete JSON document from accumulated state.
-  # Accepts any ExUnit times_us map format (old or new).
-  @spec build_document(t(), map()) :: map()
-  defp build_document(state, times_us) do
-    tests = state.tests |> Enum.reverse() |> sort_tests()
+  @spec build_document(t(), [map()], map()) :: map()
+  defp build_document(state, tests, summary) do
+    # Call filter_tests once and pass result to both maybe_add_* functions
+    filtered_tests = Filters.filter_tests(tests, state.opts)
 
-    doc = %{
+    %{
       version: 1,
       seed: state.seed,
-      summary: build_summary(tests, times_us)
+      summary: summary
     }
+    |> maybe_add_tests(filtered_tests, state.opts)
+    |> maybe_add_error_groups(tests, filtered_tests, state.opts)
+    |> maybe_add_module_failures(state.modules)
+  end
 
-    # Add tests unless summary_only
-    doc =
-      case filter_tests(tests, state.opts) do
-        nil ->
-          doc
+  @doc false
+  # Adds filtered tests array to document unless summary_only mode is enabled.
+  # Accepts pre-filtered tests (nil means summary_only mode).
+  @spec maybe_add_tests(map(), [map()] | nil, keyword()) :: map()
+  defp maybe_add_tests(doc, nil, _opts), do: doc
 
-        filtered ->
-          patterns = Keyword.get(state.opts, :filter_out, [])
-          marked = apply_filter_out(filtered, patterns)
-          Map.put(doc, :tests, marked)
-      end
+  defp maybe_add_tests(doc, filtered_tests, opts) do
+    patterns = Keyword.get(opts, :filter_out, [])
+    marked = Filters.apply_filter_out(filtered_tests, patterns)
+    Map.put(doc, :tests, marked)
+  end
 
-    # Add module failures if any
-    if state.modules == [] do
-      doc
+  @doc false
+  # Adds error_groups to document when group_by_error is enabled and failures exist.
+  # Uses pre-filtered tests to avoid calling filter_tests twice.
+  @spec maybe_add_error_groups(map(), [map()], [map()] | nil, keyword()) :: map()
+  defp maybe_add_error_groups(doc, all_tests, filtered_tests, opts) do
+    if Keyword.get(opts, :group_by_error, false) do
+      # Use filtered tests if available, otherwise all tests (for summary_only mode)
+      tests_for_grouping = filtered_tests || all_tests
+
+      failed_tests = Enum.filter(tests_for_grouping, &(&1.state == "failed"))
+      groups = ErrorGroups.build_error_groups(failed_tests)
+
+      if groups == [], do: doc, else: Map.put(doc, :error_groups, groups)
     else
-      Map.put(doc, :module_failures, Enum.reverse(state.modules))
+      doc
     end
   end
+
+  @doc false
+  # Adds module_failures to document when setup_all failures occurred.
+  @spec maybe_add_module_failures(map(), [map()]) :: map()
+  defp maybe_add_module_failures(doc, []), do: doc
+  defp maybe_add_module_failures(doc, modules), do: Map.put(doc, :module_failures, Enum.reverse(modules))
 
   @doc false
   # Increments the count for a test state using explicit pattern matching.
@@ -236,122 +263,5 @@ defmodule ExUnitJSON.Formatter do
   @spec sort_tests([map()]) :: [map()]
   defp sort_tests(tests) do
     Enum.sort_by(tests, fn t -> {t.file, t.line, t.name} end)
-  end
-
-  @doc false
-  # Filters tests based on configuration options.
-  # Returns nil for summary_only (omit tests array), filtered list, or all tests.
-  # Priority: summary_only > first_failure > failures_only > all
-  @spec filter_tests([map()], keyword()) :: [map()] | nil
-  defp filter_tests(tests, opts) do
-    cond do
-      Keyword.get(opts, :summary_only, false) ->
-        nil
-
-      Keyword.get(opts, :first_failure, false) ->
-        tests
-        |> Enum.filter(&(&1.state == "failed"))
-        |> Enum.take(1)
-
-      Keyword.get(opts, :failures_only, false) ->
-        Enum.filter(tests, &(&1.state == "failed"))
-
-      true ->
-        tests
-    end
-  end
-
-  @doc false
-  # Marks failed tests as filtered if their failure message matches any pattern.
-  # Returns tests unchanged if no patterns provided.
-  @spec apply_filter_out([map()], [String.t()]) :: [map()]
-  defp apply_filter_out(tests, []), do: tests
-
-  defp apply_filter_out(tests, patterns) do
-    Enum.map(tests, fn test ->
-      if test.state == "failed" and failure_matches_pattern?(test, patterns) do
-        Map.put(test, :filtered, true)
-      else
-        test
-      end
-    end)
-  end
-
-  @doc false
-  # Checks if any failure message in the test matches any of the patterns.
-  @spec failure_matches_pattern?(map(), [String.t()]) :: boolean()
-  defp failure_matches_pattern?(%{failures: failures}, patterns) when is_list(failures) do
-    Enum.any?(failures, fn failure ->
-      message = Map.get(failure, :message, "")
-      Enum.any?(patterns, fn pattern -> String.contains?(message, pattern) end)
-    end)
-  end
-
-  defp failure_matches_pattern?(_, _), do: false
-
-  @doc false
-  # Builds compact JSONL output - one JSON object per line, minimal fields.
-  # Format: {"f":"file:line","n":"name","s":"state","e":"error..."} per test
-  # Last line is summary: {"summary":{...}}
-  @spec build_compact_output(t(), map()) :: iodata()
-  defp build_compact_output(state, times_us) do
-    tests = state.tests |> Enum.reverse() |> sort_tests()
-    filtered = filter_tests(tests, state.opts)
-    patterns = Keyword.get(state.opts, :filter_out, [])
-
-    test_lines =
-      case filtered do
-        nil ->
-          []
-
-        test_list ->
-          test_list
-          |> apply_filter_out(patterns)
-          |> Enum.map(&compact_test_line/1)
-      end
-
-    summary = build_summary(tests, times_us)
-    summary_line = :json.encode(%{summary: summary})
-
-    # Join with newlines, add trailing newline
-    Enum.join(test_lines ++ [summary_line], "\n") <> "\n"
-  end
-
-  @doc false
-  # Encodes a single test as a compact JSON object.
-  # Keys: f=file:line, n=name, s=state, e=error (first line, only if failed), x=filtered
-  defp compact_test_line(test) do
-    base = %{
-      "f" => "#{test.file}:#{test.line}",
-      "n" => test.name,
-      "s" => test.state
-    }
-
-    # Add error message (first line only) for failed tests
-    compact =
-      if test.state == "failed" and test.failures != [] do
-        error_msg =
-          test.failures
-          |> List.first()
-          |> Map.get(:message, "")
-          |> String.trim()
-          |> String.split("\n", parts: 2)
-          |> List.first()
-          |> String.trim()
-
-        Map.put(base, "e", error_msg)
-      else
-        base
-      end
-
-    # Add filtered flag if present
-    compact =
-      if Map.get(test, :filtered, false) do
-        Map.put(compact, "x", true)
-      else
-        compact
-      end
-
-    :json.encode(compact)
   end
 end

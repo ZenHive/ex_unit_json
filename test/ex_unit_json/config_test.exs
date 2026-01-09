@@ -162,4 +162,21 @@ defmodule ExUnitJSON.ConfigTest do
       assert Config.compact?() == false
     end
   end
+
+  describe "group_by_error?/0" do
+    test "returns true when group_by_error is enabled" do
+      Application.put_env(:ex_unit_json, :opts, group_by_error: true)
+      assert Config.group_by_error?() == true
+    end
+
+    test "returns false when group_by_error is disabled" do
+      Application.put_env(:ex_unit_json, :opts, group_by_error: false)
+      assert Config.group_by_error?() == false
+    end
+
+    test "returns false when group_by_error is not set" do
+      Application.put_env(:ex_unit_json, :opts, [])
+      assert Config.group_by_error?() == false
+    end
+  end
 end

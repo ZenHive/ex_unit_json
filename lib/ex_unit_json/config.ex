@@ -14,11 +14,13 @@ defmodule ExUnitJSON.Config do
     * `:filter_out` - List of patterns to mark matching failures as filtered
     * `:output` - File path to write JSON output (default: stdout)
     * `:compact` - When true, output JSONL with minimal fields
+    * `:group_by_error` - When true, add error_groups array grouping failures by message
 
   """
 
   @typedoc "Valid option keys for ExUnitJSON configuration"
-  @type option :: :summary_only | :failures_only | :first_failure | :filter_out | :output | :compact
+  @type option ::
+          :summary_only | :failures_only | :first_failure | :filter_out | :output | :compact | :group_by_error
 
   @typedoc "Keyword list of ExUnitJSON options"
   @type opts :: [
@@ -27,10 +29,11 @@ defmodule ExUnitJSON.Config do
           first_failure: boolean(),
           filter_out: [String.t()],
           output: String.t() | nil,
-          compact: boolean()
+          compact: boolean(),
+          group_by_error: boolean()
         ]
 
-  @valid_options [:summary_only, :failures_only, :first_failure, :filter_out, :output, :compact]
+  @valid_options [:summary_only, :failures_only, :first_failure, :filter_out, :output, :compact, :group_by_error]
 
   @doc """
   Gets options from Application environment.
@@ -120,6 +123,14 @@ defmodule ExUnitJSON.Config do
   @spec compact?() :: boolean()
   def compact? do
     get_opt(:compact, false)
+  end
+
+  @doc """
+  Checks if group-by-error mode is enabled.
+  """
+  @spec group_by_error?() :: boolean()
+  def group_by_error? do
+    get_opt(:group_by_error, false)
   end
 
   @doc false

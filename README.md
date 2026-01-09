@@ -9,7 +9,7 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 - Drop-in replacement for `mix test` with JSON output
 - All test states: passed, failed, skipped, excluded
 - Detailed failure information with assertion values and stacktraces
-- Filtering options: `--summary-only`, `--failures-only`, `--first-failure`, `--filter-out`
+- Filtering options: `--summary-only`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`
 - File output: `--output results.json`
 - Deterministic test ordering for reproducible output
 - No runtime dependencies (uses Elixir 1.18+ built-in `:json`)
@@ -66,6 +66,9 @@ mix test.json --first-failure
 # Mark failures matching pattern as filtered (can repeat)
 mix test.json --filter-out "credentials" --filter-out "rate limit"
 
+# Group failures by similar error message
+mix test.json --group-by-error
+
 # Write JSON to a file instead of stdout
 mix test.json --output results.json
 
@@ -85,6 +88,7 @@ All standard `mix test` options are also supported (file paths, line numbers, et
   "seed": 12345,
   "summary": { ... },
   "tests": [ ... ],
+  "error_groups": [ ... ],
   "module_failures": [ ... ]
 }
 ```
@@ -95,6 +99,7 @@ All standard `mix test` options are also supported (file paths, line numbers, et
 | `seed` | integer | Random seed used for test ordering |
 | `summary` | object | Aggregate test statistics |
 | `tests` | array | Individual test results (omitted with `--summary-only`) |
+| `error_groups` | array | Failures grouped by message (only with `--group-by-error`) |
 | `module_failures` | array | setup_all failures (only present when failures occur) |
 
 ### Summary Object
@@ -189,6 +194,31 @@ All standard `mix test` options are also supported (file paths, line numbers, et
 | `function` | string | Function name (optional) |
 | `arity` | integer | Function arity (optional) |
 | `app` | string | Application name (optional) |
+
+### Error Group Object
+
+When using `--group-by-error`, failures are grouped by their error message:
+
+```json
+{
+  "pattern": "Connection refused",
+  "count": 47,
+  "example": {
+    "name": "test API call",
+    "module": "MyApp.APITest",
+    "file": "test/api_test.exs",
+    "line": 25
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pattern` | string | First line of the error message (truncated at 200 chars) |
+| `count` | integer | Number of failures with this error |
+| `example` | object | One example test with this failure |
+
+Groups are sorted by count (descending), so the most common errors appear first.
 
 ## Example Output
 

@@ -183,18 +183,20 @@ Mark failures matching pattern as `"filtered": true` in JSON. Use case: Filter e
 mix test.json --filter-out "credentials" --filter-out "API key"
 ```
 
+#### `--group-by-error` ✅ [D:6/B:7 → 1.2]
+Group failures by similar error message. Shows root causes at a glance:
+```json
+{"error_groups": [{"pattern": "Not all sent parameters", "count": 47, "example": {...}}]}
+```
+Use case: When 100 tests fail with the same root cause, show it once.
+
 ### High Priority (ROI > 2.0)
 
 (No remaining high-priority items)
 
 ### Medium Priority (ROI 1.0-2.0)
 
-#### `--group-by-error` [D:6/B:7 → 1.2] 📋
-Group failures by similar error message. Shows root causes at a glance:
-```json
-{"error_groups": [{"pattern": "Not all sent parameters", "count": 47, "example": "..."}]}
-```
-Use case: When 100 tests fail with the same root cause, show it once.
+(No remaining medium-priority items)
 
 ### Other Future Features
 
@@ -260,6 +262,7 @@ Root
 - seed: integer
 - summary: object
 - tests: array of test objects (omitted with `--summary-only`; filtered with `--failures-only`)
+- error_groups: array of error group objects (only with `--group-by-error`)
 - meta: object (optional; includes truncation settings)
 
 Summary
@@ -304,6 +307,15 @@ Metadata
   - expr_char_limit: integer (default: 200)
   - collection_item_limit: integer (default: 50)
   - printable_limit: integer (default: 500)
+
+Error Group (only with `--group-by-error`)
+- pattern: string (first line of error message, max 200 chars)
+- count: integer
+- example: object
+  - name: string
+  - module: string
+  - file: string
+  - line: integer
 
 Ordering
 - Tests are sorted by `file`, then `line`, then `name` for determinism.

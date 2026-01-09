@@ -145,6 +145,15 @@ defmodule ExUnitJSON.JSONEncoderTest do
                }
              }
     end
+
+    test "handles non-atom tag keys" do
+      # Edge case: tags map with string keys (rare, but possible)
+      tags = %{"string_key" => "value", 123 => "number_key"}
+      result = JSONEncoder.encode_tags(tags)
+
+      # Non-atom keys should be kept (internal_tag? returns false for them)
+      assert result == %{"string_key" => "value", "123" => "number_key"}
+    end
   end
 
   describe "encode_test/1" do
@@ -219,6 +228,37 @@ defmodule ExUnitJSON.JSONEncoderTest do
       decoded = JSON.decode!(json)
       assert decoded["name"] == "test example"
       assert decoded["state"] == "passed"
+    end
+
+    test "handles nil file in tags" do
+      test =
+        build_test_with_raw_tags(%{
+          file: nil,
+          line: 10,
+          module: __MODULE__.FakeTest,
+          test: :"test nil file",
+          test_type: :test
+        })
+
+      result = JSONEncoder.encode_test(test)
+
+      assert result.file == nil
+    end
+
+    test "handles charlist file path in tags" do
+      test =
+        build_test_with_raw_tags(%{
+          file: ~c"test/charlist_path_test.exs",
+          line: 10,
+          module: __MODULE__.FakeTest,
+          test: :"test charlist file",
+          test_type: :test
+        })
+
+      result = JSONEncoder.encode_test(test)
+
+      # Charlist should be converted to string
+      assert result.file == "test/charlist_path_test.exs"
     end
   end
 
@@ -323,6 +363,34 @@ defmodule ExUnitJSON.JSONEncoderTest do
       [failure] = JSONEncoder.encode_failure(state)
 
       assert failure.assertion.expr == nil
+    end
+
+    test "truncates very long expression" do
+      # Create an expression longer than 200 chars (@expr_char_limit)
+      # Build a long expression via nested function calls
+      long_expr =
+        quote do
+          very_long_function_name_that_is_quite_descriptive(
+            another_very_long_argument_name_here,
+            yet_another_extremely_long_parameter_name,
+            one_more_ridiculously_long_variable_name,
+            final_unnecessarily_verbose_argument_name
+          )
+        end
+
+      error = %ExUnit.AssertionError{
+        message: "Assertion failed",
+        left: 1,
+        right: 2,
+        expr: long_expr
+      }
+
+      state = {:failed, [{:error, error, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      # Should be truncated with "..." appended
+      assert String.length(failure.assertion.expr) <= 203
+      assert String.ends_with?(failure.assertion.expr, "...")
     end
 
     test "encodes multiple failures" do
@@ -475,6 +543,57 @@ defmodule ExUnitJSON.JSONEncoderTest do
       assert frame.app == nil
     end
 
+    test "handles stacktrace entry with non-list location" do
+      # Location is an atom instead of keyword list
+      stacktrace = [
+        {MyModule, :my_function, 2, :no_location}
+      ]
+
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+
+      assert frame.module == "MyModule"
+      assert frame.function == "my_function"
+      assert frame.arity == 2
+      assert frame.file == nil
+      assert frame.line == nil
+    end
+
+    test "handles stacktrace entry with nil location" do
+      stacktrace = [
+        {MyModule, :my_function, 2, nil}
+      ]
+
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+
+      assert frame.module == "MyModule"
+      assert frame.file == nil
+      assert frame.line == nil
+    end
+
+    test "includes app name for known modules" do
+      # Kernel is part of :elixir application
+      stacktrace = [
+        {Kernel, :+, 2, [file: ~c"lib/kernel.ex", line: 1]}
+      ]
+
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+
+      assert frame.module == "Kernel"
+      assert frame.app == "elixir"
+    end
+
+    test "handles non-atom module in stacktrace" do
+      # Edge case: module is not an atom (e.g., a string)
+      stacktrace = [
+        {"NotAModule", :my_function, 2, [file: ~c"test.ex", line: 1]}
+      ]
+
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+
+      # Non-atom module means get_app returns nil
+      assert frame.app == nil
+    end
+
     test "output is JSON-serializable" do
       stacktrace = [
         {MyModule, :my_function, 2, [file: ~c"lib/my_module.ex", line: 42]}
@@ -516,6 +635,18 @@ defmodule ExUnitJSON.JSONEncoderTest do
       module: module,
       state: state,
       time: time,
+      tags: tags,
+      logs: ""
+    }
+  end
+
+  # Helper to build ExUnit.Test with raw tags (no merging with defaults)
+  defp build_test_with_raw_tags(tags) do
+    %ExUnit.Test{
+      name: tags[:test] || :"test example",
+      module: tags[:module] || __MODULE__.FakeTest,
+      state: nil,
+      time: 1000,
       tags: tags,
       logs: ""
     }

@@ -6,6 +6,52 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ## Phase 2 Features
 
+### `--group-by-error` Flag
+
+**Added:** 2026-01-09
+
+Group failures by similar error message, showing root causes at a glance.
+
+```bash
+mix test.json --group-by-error
+```
+
+**Use case:** When 100 tests fail with the same root cause (e.g., connection refused, missing credentials), see it summarized once instead of scrolling through 100 identical errors.
+
+**Output:**
+```json
+{
+  "error_groups": [
+    {
+      "pattern": "Connection refused",
+      "count": 47,
+      "example": {
+        "name": "test API call",
+        "module": "MyApp.APITest",
+        "file": "test/api_test.exs",
+        "line": 25
+      }
+    }
+  ]
+}
+```
+
+**Behavior:**
+- Groups failed tests by the first line of their error message
+- Sorts groups by count (descending) - most common errors first
+- Includes one example test for each group
+- Truncates long patterns at 200 characters
+- Works alongside other options (`--failures-only`, etc.)
+- `error_groups` key only added when option is enabled and failures exist
+
+**Files modified:**
+- `lib/ex_unit_json/config.ex` - Added `:group_by_error` option
+- `lib/mix/tasks/test_json.ex` - Added `--group-by-error` flag parsing
+- `lib/ex_unit_json/formatter.ex` - Added `build_error_groups/1`, `extract_error_pattern/1`, `truncate_pattern/1`
+- Tests added to config_test.exs, formatter_test.exs, test_json_test.exs
+
+---
+
 ### `--filter-out` Flag
 
 **Added:** 2026-01-09

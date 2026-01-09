@@ -46,6 +46,13 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
+    test "parses --group-by-error flag" do
+      {opts, rest} = parse_args(["--group-by-error"])
+
+      assert opts[:group_by_error] == true
+      assert rest == []
+    end
+
     test "parses single --filter-out flag" do
       {opts, rest} = parse_args(["--filter-out", "credentials"])
 
@@ -588,6 +595,49 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
 
     @tag :integration
+    test "--group-by-error adds error_groups to output" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationGroupByErrorTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+          test "fails with connection error" do
+            flunk("Connection refused")
+          end
+          test "fails with same error" do
+            flunk("Connection refused")
+          end
+          test "fails with different error" do
+            assert 1 == 2
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--group-by-error"])
+
+        assert exit_code != 0
+        assert {:ok, json} = decode_json(output)
+        # Summary reflects all tests
+        assert json["summary"]["total"] == 4
+        assert json["summary"]["failed"] == 3
+        # error_groups present
+        assert Map.has_key?(json, "error_groups")
+        groups = json["error_groups"]
+        assert length(groups) == 2
+        # First group is the one with most occurrences
+        first_group = hd(groups)
+        assert first_group["count"] == 2
+        assert first_group["pattern"] == "Connection refused"
+        assert Map.has_key?(first_group, "example")
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
     test "--summary-only takes precedence over --failures-only" do
       {test_file, cleanup} =
         create_temp_test_file("""
@@ -649,6 +699,10 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   defp extract_json_opts(["--compact" | rest], opts, remaining) do
     extract_json_opts(rest, [{:compact, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--group-by-error" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:group_by_error, true} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do
