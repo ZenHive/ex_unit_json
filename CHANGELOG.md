@@ -180,3 +180,69 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 - `mix test` passes (102 tests)
 - All acceptance criteria verified
 - JSON output validated against schema v1
+
+---
+
+### Task 6: Mix Task - Basic Implementation
+
+**Completed:** 2026-01-09
+
+**What was done:**
+- Created `Mix.Tasks.Test.Json` module with full documentation
+- Parses `--summary-only`, `--failures-only`, `--output` switches
+- Passes remaining args through to `mix test` (file paths, line numbers)
+- Configures ExUnit to use `ExUnitJSON.Formatter`
+- Exit codes preserved from delegated test task
+- Added `@shortdoc` and `@moduledoc` with examples
+- 15 tests covering option parsing, module attributes, and integration
+
+**Key implementation details:**
+- Uses `OptionParser.parse!/2` with strict mode for argument parsing
+- Options stored in Application env (ExUnit formatter API limitation)
+- Delegates to `Mix.Task.run("test", test_args)` preserving exit codes
+- `mix help test.json` shows full documentation
+
+**Files created:**
+- `lib/mix/tasks/test_json.ex` - Mix task implementation
+- `test/mix/tasks/test_json_test.exs` - 15 tests
+
+**Files modified:**
+- `mix.exs` - Added `cli/0` for preferred_envs config
+
+**Verification:**
+- `mix test` passes (117 tests)
+- `mix help test.json` displays documentation
+- `mix test.json` produces valid JSON output
+- Exit code 0 on pass, non-zero on failure
+
+---
+
+### Task 7: Filtering Options
+
+**Completed:** 2026-01-09
+
+**What was done:**
+- Implemented `filter_tests/2` in formatter with summary_only and failures_only support
+- `--summary-only` omits the `tests` array entirely (only summary in output)
+- `--failures-only` filters tests array to include only failed tests
+- Summary statistics always reflect full suite regardless of filter flags
+- When both flags are used, `--summary-only` takes precedence
+- Added 3 integration tests for filtering flags
+- Added 2 unit tests for filtering logic in formatter
+
+**Key implementation details:**
+- Filtering handled in `build_document/2` via `filter_tests/2`
+- Returns `nil` for summary_only (omits key), filtered list for failures_only
+- Summary counts computed from full test list before filtering
+- Options flow from Mix task → Application env → Config → Formatter
+
+**Files modified:**
+- `lib/ex_unit_json/formatter.ex` - `filter_tests/2` implementation
+- `test/ex_unit_json/formatter_test.exs` - 2 unit tests for filtering
+- `test/mix/tasks/test_json_test.exs` - 3 integration tests
+
+**Verification:**
+- `mix test` passes (120 tests)
+- `mix test.json --summary-only` outputs summary only
+- `mix test.json --failures-only` outputs only failed tests
+- Both flags combined works correctly

@@ -1,6 +1,6 @@
 # ex_unit_json
 
-**Status:** In Progress (Task 5 of 8 complete)
+**Status:** In Progress (Task 7 of 8 complete)
 **Last Updated:** 2026-01-09
 
 ## Project Overview
@@ -110,86 +110,29 @@
 
 ---
 
-### Task 6: Mix Task - Basic Implementation
+### Task 6: Mix Task - Basic Implementation ✅
 
-**Goal:** Create `mix test.json` task that configures ExUnit and runs tests with JSON output.
-
-**Dependencies:** Task 5
-
-**Approach:**
-1. Create `Mix.Tasks.Test.Json` module
-2. Parse command-line arguments
-3. Configure ExUnit with `ExUnitJSON.Formatter`
-4. Delegate to `Mix.Tasks.Test`
-5. Handle exit codes properly
-6. Define `@switches` (summary_only, failures_only, output) and document `mix help test.json`
-
-**Key Implementation:**
-```elixir
-defmodule Mix.Tasks.Test.Json do
-  use Mix.Task
-
-  @shortdoc "Run tests with JSON output"
-
-  def run(args) do
-    {opts, test_args} = OptionParser.parse!(args, switches: @switches)
-    Application.put_env(:ex_unit_json, :opts, opts)
-
-    # Replace default formatter
-    ExUnit.configure(formatters: [ExUnitJSON.Formatter])
-
-    Mix.Task.run("test", test_args)
-  end
-end
-```
-
-**Testing Requirements:**
-- [ ] Unit: Option parsing works correctly
-- [ ] Integration: `mix test.json` runs and outputs JSON
-- [ ] Integration: Exit code reflects test results
-- [ ] Integration: Test file arguments pass through
-- [ ] Unit: `mix help test.json` shows documented switches
+**Status:** Complete (2026-01-09) - See [CHANGELOG.md](CHANGELOG.md#task-6-mix-task---basic-implementation)
 
 **Acceptance Criteria:**
-- [ ] `mix test.json` produces JSON output
-- [ ] All `mix test` arguments supported (files, line numbers)
-- [ ] Exit code 0 on pass, non-zero on failure
-- [ ] `mix help test.json` shows documentation
-- [ ] Options validated via `ExUnitJSON.Config`
-
-**Estimated Complexity:** Medium
+- [x] `mix test.json` produces JSON output
+- [x] All `mix test` arguments supported (files, line numbers)
+- [x] Exit code 0 on pass, non-zero on failure
+- [x] `mix help test.json` shows documentation
+- [x] Options validated via `ExUnitJSON.Config`
 
 ---
 
-### Task 7: Filtering Options
+### Task 7: Filtering Options ✅
 
-**Goal:** Implement `--summary-only` and `--failures-only` flags.
-
-**Dependencies:** Task 6
-
-**Approach:**
-1. Add switches to Mix task: `summary_only`, `failures_only`
-2. Pass options to formatter via Application.put_env
-3. In formatter, check options when building output:
-   - `--summary-only`: Omit `tests` array entirely
-   - `--failures-only`: Filter tests array to failed only
-4. Test both flags
-
-**Testing Requirements:**
-- [ ] Unit: --summary-only produces summary-only output
-- [ ] Unit: --failures-only filters to failures
-- [ ] Unit: Both flags together work correctly
-- [ ] Integration: Real test run with flags
-- [ ] Unit: Summary counts unchanged by filters
+**Status:** Complete (2026-01-09) - See [CHANGELOG.md](CHANGELOG.md#task-7-filtering-options)
 
 **Acceptance Criteria:**
-- [ ] `mix test.json --summary-only` outputs only summary
-- [ ] `mix test.json --failures-only` outputs only failed tests
-- [ ] Flags can be combined
-- [ ] Documentation updated
-- [ ] Summary reflects full suite regardless of filters
-
-**Estimated Complexity:** Simple
+- [x] `mix test.json --summary-only` outputs only summary
+- [x] `mix test.json --failures-only` outputs only failed tests
+- [x] Flags can be combined
+- [x] Documentation updated
+- [x] Summary reflects full suite regardless of filters
 
 ---
 

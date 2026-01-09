@@ -179,7 +179,7 @@ defmodule Mix.Tasks.Test.JsonTest do
         end
         """)
 
-      output_file = Path.join(System.tmp_dir!(), "test_output_#{:rand.uniform(100_000)}.json")
+      output_file = Path.join(System.tmp_dir!(), "test_output_#{System.unique_integer([:positive])}.json")
 
       try do
         {_output, exit_code} = run_mix_test_json([test_file, "--output", output_file])
@@ -192,6 +192,94 @@ defmodule Mix.Tasks.Test.JsonTest do
       after
         cleanup.()
         File.rm(output_file)
+      end
+    end
+
+    @tag :integration
+    test "--summary-only omits tests array" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationSummaryOnlyTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--summary-only"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+        assert Map.has_key?(json, "summary")
+        refute Map.has_key?(json, "tests")
+        assert json["summary"]["total"] == 1
+        assert json["summary"]["passed"] == 1
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--failures-only filters to failed tests" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationFailuresOnlyTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+          test "fails" do
+            assert 1 == 2
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--failures-only"])
+
+        assert exit_code != 0
+        assert {:ok, json} = decode_json(output)
+        # Summary reflects full suite
+        assert json["summary"]["total"] == 2
+        assert json["summary"]["passed"] == 1
+        assert json["summary"]["failed"] == 1
+        # Tests array only has failures
+        assert length(json["tests"]) == 1
+        assert hd(json["tests"])["state"] == "failed"
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--summary-only takes precedence over --failures-only" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCombinedFlagsTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+          test "fails" do
+            assert 1 == 2
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--summary-only", "--failures-only"])
+
+        assert exit_code != 0
+        assert {:ok, json} = decode_json(output)
+        # Summary is present
+        assert Map.has_key?(json, "summary")
+        assert json["summary"]["total"] == 2
+        # Tests array is omitted (summary_only takes precedence)
+        refute Map.has_key?(json, "tests")
+      after
+        cleanup.()
       end
     end
   end
@@ -209,7 +297,7 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   # Helper to create a temporary test file
   defp create_temp_test_file(content) do
-    filename = "integration_test_#{:rand.uniform(100_000)}_test.exs"
+    filename = "integration_test_#{System.unique_integer([:positive])}_test.exs"
     path = Path.join(System.tmp_dir!(), filename)
     File.write!(path, content)
     cleanup = fn -> File.rm(path) end
@@ -231,7 +319,6 @@ defmodule Mix.Tasks.Test.JsonTest do
     {output, exit_code}
   end
 
-  @doc false
   # Helper to decode JSON, handling potential compilation output prefix.
   # :json.decode/1 returns the decoded value directly (not {:ok, value}).
   defp decode_json(output) do
@@ -247,7 +334,7 @@ defmodule Mix.Tasks.Test.JsonTest do
         {:ok, :json.decode(json_str)}
     end
   rescue
-    e in [ArgumentError, ErlangError, MatchError] ->
+    e in [ArgumentError, ErlangError] ->
       {:error, {:decode_failed, Exception.message(e)}}
   end
 end
