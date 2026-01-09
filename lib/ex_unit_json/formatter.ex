@@ -56,6 +56,13 @@ defmodule ExUnitJSON.Formatter do
   def init(opts) do
     config_opts = Config.get_opts()
     merged_opts = Keyword.merge(config_opts, opts)
+
+    # Apply --quiet Logger suppression here (after app config loads)
+    # to ensure it takes effect after config/test.exs is evaluated
+    if Keyword.get(merged_opts, :quiet, false) do
+      Logger.configure(level: :error)
+    end
+
     {:ok, %__MODULE__{opts: merged_opts, start_time: System.monotonic_time(:microsecond)}}
   end
 

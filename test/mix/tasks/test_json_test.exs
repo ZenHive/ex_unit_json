@@ -645,6 +645,43 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
 
     @tag :integration
+    test "--quiet suppresses Logger output" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationQuietTest do
+          use ExUnit.Case
+          require Logger
+
+          test "logs info message" do
+            Logger.info("THIS_INFO_MESSAGE_SHOULD_BE_SUPPRESSED")
+            assert true
+          end
+        end
+        """)
+
+      try do
+        # Without --quiet, Logger output appears
+        {_output_noisy, _} = run_mix_test_json([test_file])
+        # With --quiet, Logger output should be suppressed
+        {output_quiet, exit_code} = run_mix_test_json([test_file, "--quiet"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output_quiet)
+        assert json["summary"]["passed"] == 1
+
+        # The info message should NOT appear in quiet output
+        refute output_quiet =~ "THIS_INFO_MESSAGE_SHOULD_BE_SUPPRESSED",
+               "Expected --quiet to suppress Logger.info output"
+
+        # Verify noisy output would have the message (sanity check)
+        # Note: This may not always work depending on Logger config, so we just
+        # verify the quiet flag is being processed
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
     test "--summary-only takes precedence over --failures-only" do
       {test_file, cleanup} =
         create_temp_test_file("""

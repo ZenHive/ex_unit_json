@@ -179,4 +179,18 @@ defmodule ExUnitJSON.ConfigTest do
       assert Config.group_by_error?() == false
     end
   end
+
+  describe "quiet option" do
+    test ":quiet is preserved through get_opts/0" do
+      Application.put_env(:ex_unit_json, :opts, quiet: true)
+      opts = Config.get_opts()
+      assert Keyword.get(opts, :quiet) == true
+    end
+
+    test ":quiet defaults to nil when not set" do
+      Application.put_env(:ex_unit_json, :opts, [])
+      opts = Config.get_opts()
+      assert Keyword.get(opts, :quiet) == nil
+    end
+  end
 end

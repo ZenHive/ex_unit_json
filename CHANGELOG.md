@@ -4,6 +4,32 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.1.2 (2026-01-09)
+
+### Bug Fixes
+
+#### Fix: `--quiet` flag not suppressing Logger output
+
+**Fixed:** 2026-01-09
+
+**Issue:** The `--quiet` flag wasn't working - Logger output still appeared even when the flag was used.
+
+**Root cause:** Two issues:
+1. `:quiet` was missing from `@valid_options` in `Config.ex`, so it was being filtered out by `validate_opts/1` and never reached the formatter
+2. `Logger.configure(level: :error)` was called before `Mix.Task.run("test")`, but when the test task runs it loads application config from `config/test.exs` which overwrites the Logger level
+
+**Fix:**
+1. Added `:quiet` to `@valid_options` in `Config.ex`
+2. Added `Logger.configure(level: :error)` call in formatter's `init/1` (runs after app config loads)
+
+**Files modified:**
+- `lib/ex_unit_json/config.ex` - Added `:quiet` to `@valid_options`
+- `lib/ex_unit_json/formatter.ex` - Added Logger config in `init/1`
+- `test/ex_unit_json/config_test.exs` - Added tests for `:quiet` option
+- `test/mix/tasks/test_json_test.exs` - Added integration test for `--quiet`
+
+---
+
 ## v0.1.1 (2026-01-09)
 
 ### Smart `--failed` Hint
