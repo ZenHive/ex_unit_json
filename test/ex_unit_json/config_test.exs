@@ -111,4 +111,21 @@ defmodule ExUnitJSON.ConfigTest do
       assert Config.output_path() == nil
     end
   end
+
+  describe "compact?/0" do
+    test "returns true when compact is enabled" do
+      Application.put_env(:ex_unit_json, :opts, compact: true)
+      assert Config.compact?() == true
+    end
+
+    test "returns false when compact is disabled" do
+      Application.put_env(:ex_unit_json, :opts, compact: false)
+      assert Config.compact?() == false
+    end
+
+    test "returns false when compact is not set" do
+      Application.put_env(:ex_unit_json, :opts, [])
+      assert Config.compact?() == false
+    end
+  end
 end

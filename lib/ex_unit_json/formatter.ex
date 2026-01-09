@@ -80,13 +80,15 @@ defmodule ExUnitJSON.Formatter do
   end
 
   def handle_cast({:suite_finished, times_us}, state) do
-    document = build_document(state, times_us)
-    json = :json.encode(document)
+    output =
+      if Config.compact?() do
+        build_compact_output(state, times_us)
+      else
+        document = build_document(state, times_us)
+        :json.encode(document)
+      end
 
-    case Config.output_path() do
-      nil -> IO.write(json)
-      path -> File.write!(path, json)
-    end
+    write_output(output, Config.output_path())
 
     {:noreply, state}
   end
@@ -104,10 +106,12 @@ defmodule ExUnitJSON.Formatter do
   end
 
   @doc false
-  # Cleanup callback for future file handle management (Task 8)
+  # OTP callback for process termination. Currently a no-op since:
+  # - File writes happen synchronously in suite_finished (already complete)
+  # - No external resources (ports, sockets) need cleanup
+  # Kept for OTP compliance and future extensibility (e.g., flushing buffers).
   @impl GenServer
   def terminate(_reason, _state) do
-    # TODO: Close file handle if output is to file (Task 8)
     :ok
   end
 
@@ -123,6 +127,29 @@ defmodule ExUnitJSON.Formatter do
       state: "failed",
       failures: JSONEncoder.encode_failure(module.state)
     }
+  end
+
+  @doc false
+  # Writes output to stdout or file. Handles file write errors gracefully
+  # with a clear error message rather than crashing the GenServer.
+  @spec write_output(iodata(), String.t() | nil) :: :ok
+  defp write_output(output, nil) do
+    IO.write(output)
+  end
+
+  defp write_output(output, path) when is_binary(path) do
+    case File.write(path, output) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        IO.puts(:stderr, """
+        Error: Failed to write JSON output to #{path}
+        Reason: #{:file.format_error(reason)}
+        """)
+
+        :ok
+    end
   end
 
   @doc false
@@ -190,10 +217,13 @@ defmodule ExUnitJSON.Formatter do
   @doc false
   # Extracts total duration from ExUnit times_us map.
   # Handles both old format (%{async, sync}) and new format (%{async, run, load}).
+  # Guards ensure we only perform arithmetic on integers, falling back to 0 otherwise.
   @spec extract_duration(map()) :: non_neg_integer()
   defp extract_duration(%{run: run}) when is_integer(run), do: run
-  defp extract_duration(%{async: async, sync: sync}), do: async + sync
-  defp extract_duration(%{async: async}), do: async
+
+  defp extract_duration(%{async: async, sync: sync}) when is_integer(async) and is_integer(sync), do: async + sync
+
+  defp extract_duration(%{async: async}) when is_integer(async), do: async
   defp extract_duration(_), do: 0
 
   @doc false
@@ -213,5 +243,60 @@ defmodule ExUnitJSON.Formatter do
       Keyword.get(opts, :failures_only, false) -> Enum.filter(tests, &(&1.state == "failed"))
       true -> tests
     end
+  end
+
+  @doc false
+  # Builds compact JSONL output - one JSON object per line, minimal fields.
+  # Format: {"f":"file:line","n":"name","s":"state","e":"error..."} per test
+  # Last line is summary: {"summary":{...}}
+  @spec build_compact_output(t(), map()) :: iodata()
+  defp build_compact_output(state, times_us) do
+    tests = state.tests |> Enum.reverse() |> sort_tests()
+    filtered = filter_tests(tests, state.opts)
+
+    test_lines =
+      case filtered do
+        nil ->
+          []
+
+        test_list ->
+          Enum.map(test_list, &compact_test_line/1)
+      end
+
+    summary = build_summary(tests, times_us)
+    summary_line = :json.encode(%{summary: summary})
+
+    # Join with newlines, add trailing newline
+    Enum.join(test_lines ++ [summary_line], "\n") <> "\n"
+  end
+
+  @doc false
+  # Encodes a single test as a compact JSON object.
+  # Keys: f=file:line, n=name, s=state, e=error (first line, only if failed)
+  defp compact_test_line(test) do
+    base = %{
+      "f" => "#{test.file}:#{test.line}",
+      "n" => test.name,
+      "s" => test.state
+    }
+
+    # Add error message (first line only) for failed tests
+    compact =
+      if test.state == "failed" and test.failures != [] do
+        error_msg =
+          test.failures
+          |> List.first()
+          |> Map.get(:message, "")
+          |> String.trim()
+          |> String.split("\n", parts: 2)
+          |> List.first()
+          |> String.trim()
+
+        Map.put(base, "e", error_msg)
+      else
+        base
+      end
+
+    :json.encode(compact)
   end
 end

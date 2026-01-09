@@ -11,20 +11,22 @@ defmodule ExUnitJSON.Config do
     * `:summary_only` - When true, omit individual test results
     * `:failures_only` - When true, include only failed tests
     * `:output` - File path to write JSON output (default: stdout)
+    * `:compact` - When true, output JSONL with minimal fields
 
   """
 
   @typedoc "Valid option keys for ExUnitJSON configuration"
-  @type option :: :summary_only | :failures_only | :output
+  @type option :: :summary_only | :failures_only | :output | :compact
 
   @typedoc "Keyword list of ExUnitJSON options"
   @type opts :: [
           summary_only: boolean(),
           failures_only: boolean(),
-          output: String.t() | nil
+          output: String.t() | nil,
+          compact: boolean()
         ]
 
-  @valid_options [:summary_only, :failures_only, :output]
+  @valid_options [:summary_only, :failures_only, :output, :compact]
 
   @doc """
   Gets options from Application environment.
@@ -90,6 +92,14 @@ defmodule ExUnitJSON.Config do
   @spec output_path() :: String.t() | nil
   def output_path do
     get_opt(:output)
+  end
+
+  @doc """
+  Checks if compact mode is enabled.
+  """
+  @spec compact?() :: boolean()
+  def compact? do
+    get_opt(:compact, false)
   end
 
   @doc false

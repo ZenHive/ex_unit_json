@@ -15,7 +15,8 @@ defmodule ExUnitJSON.MixProject do
       description: description(),
       package: package(),
       docs: docs(),
-      dialyzer: dialyzer()
+      dialyzer: dialyzer(),
+      test_coverage: test_coverage()
     ]
   end
 
@@ -78,6 +79,15 @@ defmodule ExUnitJSON.MixProject do
     [
       # Include :mix and :ex_unit in PLT for Mix.Task and ExUnit functions
       plt_add_apps: [:mix, :ex_unit]
+    ]
+  end
+
+  defp test_coverage do
+    [
+      # Mix task is tested via integration tests that run in subprocess
+      # (System.cmd), so coverage tracking doesn't see it. Exclude from coverage.
+      ignore_modules: [Mix.Tasks.Test.Json],
+      threshold: 90
     ]
   end
 end

@@ -4,6 +4,83 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## Bug Fixes
+
+### Fix: Graceful error handling for file output
+
+**Fixed:** 2026-01-09
+
+**Issue:** When `--output` pointed to an invalid path (e.g., non-existent directory), the formatter would crash with `File.write!/2` raising an exception.
+
+**Fix:** Replaced `File.write!/2` with `File.write/2` and graceful error handling:
+- Prints clear error message to stderr with reason
+- Tests continue to pass (exit code reflects test results, not file write)
+- GenServer doesn't crash on file write failure
+
+**Also improved:**
+- Added integer guards to `extract_duration/1` for defensive programming
+- Clarified `terminate/2` callback documentation (OTP compliance)
+
+**Files modified:**
+- `lib/ex_unit_json/formatter.ex` - Added `write_output/2` with error handling
+- `test/mix/tasks/test_json_test.exs` - Updated test for graceful behavior
+
+---
+
+### Fix: Mix task not found with `only: :test` dependency config
+
+**Fixed:** 2026-01-09
+
+**Issue:** When configured with `only: :test`, the `mix test.json` task was not found:
+```
+** (Mix) The task "test.json" could not be found. Did you mean "test"?
+```
+
+**Cause:** Mix runs in the `:dev` environment by default. Mix tasks must be available in `:dev` to be discovered, but the formatter only needs to run in `:test`.
+
+**Fix:** Updated installation instructions to use both environments:
+```elixir
+{:ex_unit_json, "~> 0.1.0", only: [:dev, :test], runtime: false}
+```
+
+**Files modified:**
+- `README.md` - Updated installation instructions with explanation
+
+---
+
+### Fix: ExUnit flags (--only, --exclude, --seed, etc.) not passed through
+
+**Fixed:** 2026-01-09
+
+**Issue:** ExUnit filtering flags like `--only integration` weren't working:
+```bash
+mix test.json --only integration
+# Expected: Only tests tagged @tag :integration run
+# Actual: All tests ran
+```
+
+**Cause:** `OptionParser.parse/2` in non-strict mode treats unknown switches as boolean flags. So `["--only", "integration"]` became `{"--only", nil}` and `"integration"` was separated into remaining args, breaking the flag-value pairing.
+
+**Fix:** Replaced OptionParser with explicit pattern matching that only consumes our three switches (`--summary-only`, `--failures-only`, `--output`) and passes everything else through unchanged:
+
+```elixir
+# Before (broken): OptionParser mangled unknown switches
+{opts, remaining, passthrough} = OptionParser.parse(args, switches: @switches)
+
+# After (fixed): Pattern matching preserves all unknown args
+defp extract_json_opts(["--summary-only" | rest], opts, remaining), do: ...
+defp extract_json_opts([arg | rest], opts, remaining), do: ...  # passthrough
+```
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - New `extract_json_opts/1` function
+- `test/mix/tasks/test_json_test.exs` - Added tests for --only and --exclude
+
+**Also added:**
+- `ensure_test_env!/0` - Clear error message when run in wrong environment
+
+---
+
 ## Phase 1: MVP Core Features
 
 ### Task 1: Project Structure Setup
@@ -246,3 +323,34 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 - `mix test.json --summary-only` outputs summary only
 - `mix test.json --failures-only` outputs only failed tests
 - Both flags combined works correctly
+
+---
+
+### Task 8: Output File Option & Polish
+
+**Completed:** 2026-01-09
+
+**What was done:**
+- Verified `--output FILE` option already implemented in Mix task, Config, and Formatter
+- Changed option parsing from `strict` to `switches` mode to allow passthrough of mix test options
+- Added invalid file path edge case test
+- Added golden test suite with 11 tests for JSON schema v1 conformance
+- Complete README rewrite with usage examples and full schema documentation
+- All tests passing (132 tests)
+
+**Key implementation details:**
+- `File.write!/2` raises on invalid paths (no directory, permission denied)
+- Unknown options now pass through to mix test (not rejected)
+- Golden tests verify schema structure for all test states
+- README documents complete JSON schema v1 specification
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Changed to switches mode for option passthrough
+- `test/mix/tasks/test_json_test.exs` - Added invalid path test, updated option parsing tests
+- `test/golden_test.exs` - New golden test suite (11 tests)
+- `README.md` - Complete rewrite with documentation
+
+**Verification:**
+- `mix test` passes (132 tests)
+- `mix hex.build` succeeds
+- README complete with schema documentation and examples

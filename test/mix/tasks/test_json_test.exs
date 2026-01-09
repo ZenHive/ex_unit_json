@@ -32,6 +32,13 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
+    test "parses --compact flag" do
+      {opts, rest} = parse_args(["--compact"])
+
+      assert opts[:compact] == true
+      assert rest == []
+    end
+
     test "parses multiple options together" do
       {opts, rest} = parse_args(["--summary-only", "--failures-only", "--output", "out.json"])
 
@@ -68,10 +75,49 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == ["test/a.exs", "test/b.exs"]
     end
 
-    test "raises on unknown option" do
-      assert_raise OptionParser.ParseError, fn ->
-        parse_args(["--unknown-option"])
-      end
+    test "passes through all mix test flags unchanged" do
+      # All mix test flags should pass through without mangling
+      args = [
+        "--failed",
+        "--only",
+        "integration",
+        "--exclude",
+        "slow",
+        "--seed",
+        "12345",
+        "--max-failures",
+        "3",
+        "--trace",
+        "--stale",
+        "test/my_test.exs"
+      ]
+
+      {opts, rest} = parse_args(args)
+
+      # Our options are empty
+      assert opts == []
+      # All args pass through in order
+      assert rest == args
+    end
+
+    test "mixes our options with mix test flags" do
+      args = [
+        "--failures-only",
+        "--only",
+        "integration",
+        "--output",
+        "out.json",
+        "--seed",
+        "999",
+        "test/my_test.exs"
+      ]
+
+      {opts, rest} = parse_args(args)
+
+      assert opts[:failures_only] == true
+      assert opts[:output] == "out.json"
+      # Mix test flags pass through unchanged
+      assert rest == ["--only", "integration", "--seed", "999", "test/my_test.exs"]
     end
   end
 
@@ -254,6 +300,97 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
 
     @tag :integration
+    test "--output with invalid path prints error to stderr but doesn't crash" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationInvalidPathTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      # Use a path in a non-existent directory
+      invalid_path = "/nonexistent_directory_12345/output.json"
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--output", invalid_path])
+
+        # Tests still pass - file write error is handled gracefully
+        assert exit_code == 0
+        # Error message should appear in output (stderr merged with stdout)
+        assert output =~ "Error" or output =~ "Failed to write"
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--only flag filters tests correctly" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationOnlyFlagTest do
+          use ExUnit.Case
+
+          @tag :integration
+          test "tagged as integration" do
+            assert true
+          end
+
+          test "not tagged" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--only", "integration"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+        # Total includes all tests, excluded counts filtered ones
+        assert json["summary"]["total"] == 2
+        assert json["summary"]["passed"] == 1
+        assert json["summary"]["excluded"] == 1
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--exclude flag filters tests correctly" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationExcludeFlagTest do
+          use ExUnit.Case
+
+          @tag :slow
+          test "tagged as slow" do
+            assert true
+          end
+
+          test "not tagged" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--exclude", "slow"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+        # Total includes all tests, excluded counts filtered ones
+        assert json["summary"]["total"] == 2
+        assert json["summary"]["passed"] == 1
+        assert json["summary"]["excluded"] == 1
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
     test "--summary-only takes precedence over --failures-only" do
       {test_file, cleanup} =
         create_temp_test_file("""
@@ -284,15 +421,31 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
   end
 
-  # Helper to parse args using the same switches as the Mix task
-  defp parse_args(args) do
-    switches = [
-      summary_only: :boolean,
-      failures_only: :boolean,
-      output: :string
-    ]
+  # Helper to parse args using the same logic as the Mix task
+  defp parse_args(args), do: extract_json_opts(args, [], [])
 
-    OptionParser.parse!(args, strict: switches)
+  defp extract_json_opts([], opts, remaining) do
+    {Enum.reverse(opts), Enum.reverse(remaining)}
+  end
+
+  defp extract_json_opts(["--summary-only" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:summary_only, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--failures-only" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:failures_only, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--output", value | rest], opts, remaining) do
+    extract_json_opts(rest, [{:output, value} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--compact" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:compact, true} | opts], remaining)
+  end
+
+  defp extract_json_opts([arg | rest], opts, remaining) do
+    extract_json_opts(rest, opts, [arg | remaining])
   end
 
   # Helper to create a temporary test file

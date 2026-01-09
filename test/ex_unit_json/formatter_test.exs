@@ -425,6 +425,60 @@ defmodule ExUnitJSON.FormatterTest do
       assert json["summary"]["excluded"] == 2
     end
 
+    test "handles new ExUnit times_us format with :run key" do
+      json =
+        run_formatter_to_file(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+          end,
+          %{run: 5000, async: 1000, load: 500}
+        )
+
+      # New format uses :run for total duration
+      assert json["summary"]["duration_us"] == 5000
+    end
+
+    test "handles times_us with only :async key" do
+      json =
+        run_formatter_to_file(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+          end,
+          %{async: 3000}
+        )
+
+      assert json["summary"]["duration_us"] == 3000
+    end
+
+    test "handles empty times_us map" do
+      json =
+        run_formatter_to_file(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+          end,
+          %{}
+        )
+
+      assert json["summary"]["duration_us"] == 0
+    end
+
+    test "handles invalid test state" do
+      json =
+        run_formatter_to_file(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:invalid, SomeModule})})
+          end,
+          %{async: 0, sync: 0}
+        )
+
+      assert json["summary"]["invalid"] == 1
+      assert json["summary"]["result"] == "failed"
+    end
+
     test "includes module_failures when present" do
       json =
         run_formatter_to_file(
@@ -483,6 +537,150 @@ defmodule ExUnitJSON.FormatterTest do
       # If we get here without crash, stdout output worked
       state = GenServer.call(pid, :get_state)
       assert state.seed == 1
+    end
+  end
+
+  describe "compact mode" do
+    # Helper for compact output testing
+    defp run_compact_to_file(setup_fn) do
+      output_file = Path.join(System.tmp_dir!(), "test_#{:rand.uniform(1_000_000)}.jsonl")
+      Application.put_env(:ex_unit_json, :opts, output: output_file, compact: true)
+      {:ok, pid} = Formatter.start_link()
+
+      setup_fn.(pid)
+
+      GenServer.cast(pid, {:suite_finished, %{async: 1000, sync: 500}})
+      GenServer.call(pid, :get_state)
+
+      {:ok, content} = File.read(output_file)
+      File.rm!(output_file)
+      content
+    end
+
+    test "outputs one JSON object per line" do
+      content =
+        run_compact_to_file(fn pid ->
+          GenServer.cast(pid, {:suite_started, seed: 1})
+          GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+          GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: nil)})
+        end)
+
+      lines = String.split(content, "\n", trim: true)
+      # 2 tests + 1 summary line
+      assert length(lines) == 3
+
+      # Each line is valid JSON
+      for line <- lines do
+        assert {:ok, _} = json_decode(line)
+      end
+    end
+
+    test "test lines have compact keys (f, n, s)" do
+      content =
+        run_compact_to_file(fn pid ->
+          GenServer.cast(pid, {:suite_started, seed: 1})
+          GenServer.cast(pid, {:test_finished, build_test(name: :"test example", state: nil)})
+        end)
+
+      lines = String.split(content, "\n", trim: true)
+      {:ok, test_line} = json_decode(hd(lines))
+
+      # Compact keys
+      assert Map.has_key?(test_line, "f")
+      assert Map.has_key?(test_line, "n")
+      assert Map.has_key?(test_line, "s")
+      # File:line format
+      assert test_line["f"] =~ ~r/.+:\d+/
+      assert test_line["n"] == "test example"
+      assert test_line["s"] == "passed"
+    end
+
+    test "failed tests include error message (e key)" do
+      content =
+        run_compact_to_file(fn pid ->
+          GenServer.cast(pid, {:suite_started, seed: 1})
+
+          error = %RuntimeError{message: "something went wrong\nwith more details"}
+          test = build_test(name: :t1, state: {:failed, [{:error, error, []}]})
+
+          GenServer.cast(pid, {:test_finished, test})
+        end)
+
+      lines = String.split(content, "\n", trim: true)
+      {:ok, test_line} = json_decode(hd(lines))
+
+      # Has error key with first line only
+      assert Map.has_key?(test_line, "e")
+      assert test_line["e"] == "something went wrong"
+      assert test_line["s"] == "failed"
+    end
+
+    test "passed tests do not include error message" do
+      content =
+        run_compact_to_file(fn pid ->
+          GenServer.cast(pid, {:suite_started, seed: 1})
+          GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+        end)
+
+      lines = String.split(content, "\n", trim: true)
+      {:ok, test_line} = json_decode(hd(lines))
+
+      refute Map.has_key?(test_line, "e")
+    end
+
+    test "summary line at end has summary key" do
+      content =
+        run_compact_to_file(fn pid ->
+          GenServer.cast(pid, {:suite_started, seed: 1})
+          GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+          GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:failed, [{:error, %RuntimeError{}, []}]})})
+        end)
+
+      lines = String.split(content, "\n", trim: true)
+      {:ok, summary_line} = json_decode(List.last(lines))
+
+      assert Map.has_key?(summary_line, "summary")
+      assert summary_line["summary"]["total"] == 2
+      assert summary_line["summary"]["passed"] == 1
+      assert summary_line["summary"]["failed"] == 1
+    end
+
+    test "summary_only in compact mode omits test lines" do
+      output_file = Path.join(System.tmp_dir!(), "test_#{:rand.uniform(1_000_000)}.jsonl")
+      Application.put_env(:ex_unit_json, :opts, output: output_file, compact: true, summary_only: true)
+      {:ok, pid} = Formatter.start_link()
+
+      GenServer.cast(pid, {:suite_started, seed: 1})
+      GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+      GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: nil)})
+      GenServer.cast(pid, {:suite_finished, %{async: 0, sync: 0}})
+      GenServer.call(pid, :get_state)
+
+      {:ok, content} = File.read(output_file)
+      File.rm!(output_file)
+
+      lines = String.split(content, "\n", trim: true)
+      # Only summary line
+      assert length(lines) == 1
+      {:ok, summary} = json_decode(hd(lines))
+      assert Map.has_key?(summary, "summary")
+    end
+  end
+
+  describe "terminate/2" do
+    test "terminate callback returns :ok" do
+      Application.put_env(:ex_unit_json, :opts, [])
+      {:ok, pid} = Formatter.start_link()
+
+      # Add some state
+      GenServer.cast(pid, {:suite_started, seed: 123})
+      GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+
+      # Stop the GenServer (calls terminate/2)
+      :ok = GenServer.stop(pid)
+
+      # Verify the process is stopped
+      refute Process.alive?(pid)
     end
   end
 
@@ -551,6 +749,13 @@ defmodule ExUnitJSON.FormatterTest do
       assert mod.name == "FailingSetup.Test"
       assert mod.state == "failed"
     end
+  end
+
+  # Helper to decode JSON, returns {:ok, decoded} for pattern matching
+  defp json_decode(string) do
+    {:ok, :json.decode(string)}
+  rescue
+    _ -> {:error, :invalid_json}
   end
 
   # Helper to build ExUnit.Test structs for testing

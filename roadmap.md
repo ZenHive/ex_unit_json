@@ -1,6 +1,6 @@
 # ex_unit_json
 
-**Status:** In Progress (Task 7 of 8 complete)
+**Status:** Phase 1 Complete (Task 8 of 8 complete)
 **Last Updated:** 2026-01-09
 
 ## Project Overview
@@ -34,13 +34,13 @@
 **Duration:** ~8 tasks
 
 **Success Criteria:**
-- [ ] `mix test.json` outputs valid JSON with all test results
-- [ ] `--summary-only` flag works
-- [ ] `--failures-only` flag works
-- [ ] All edge cases handled (Unicode, long values, setup failures)
-- [ ] Tests pass with good coverage
+- [x] `mix test.json` outputs valid JSON with all test results
+- [x] `--summary-only` flag works
+- [x] `--failures-only` flag works
+- [x] All edge cases handled (Unicode, long values, setup failures)
+- [x] Tests pass with good coverage (150 tests)
 - [ ] Published to Hex.pm
-- [ ] Output ordering is deterministic (file, line, name)
+- [x] Output ordering is deterministic (file, line, name)
 
 ---
 
@@ -136,48 +136,67 @@
 
 ---
 
-### Task 8: Output File Option & Polish
+### Task 8: Output File Option & Polish ✅
 
-**Goal:** Add `--output FILE` option and polish for release.
-
-**Dependencies:** Task 7
-
-**Approach:**
-1. Add `output` switch to Mix task
-2. In formatter, write to file instead of stdout if specified
-3. Update README with full documentation
-4. Add CHANGELOG.md
-5. Verify all tests pass
-6. Prepare for Hex.pm publish
-7. Document JSON Schema v1 in README and include example
-8. Add a small golden test suite (pass, fail, skip, excluded, setup_all failure)
-
-**Testing Requirements:**
-- [ ] Unit: --output writes to file
-- [ ] Unit: File contains valid JSON
-- [ ] Integration: Full workflow with file output
-- [ ] Edge: Invalid file path handling
-- [ ] Integration: Golden suite produces expected JSON (schema + ordering)
+**Status:** Complete (2026-01-09) - See [CHANGELOG.md](CHANGELOG.md#task-8-output-file-option--polish)
 
 **Acceptance Criteria:**
-- [ ] `mix test.json --output results.json` works
-- [ ] README complete with examples
-- [ ] CHANGELOG.md created
-- [ ] `mix hex.build` succeeds
-- [ ] All tests pass
-- [ ] JSON Schema v1 documented and tests validate against it
+- [x] `mix test.json --output results.json` works
+- [x] README complete with examples
+- [x] CHANGELOG.md created
+- [x] `mix hex.build` succeeds
+- [x] All tests pass (150 tests)
+- [x] JSON Schema v1 documented and tests validate against it
 
-**Estimated Complexity:** Simple
+---
+
+## Phase 1.5: AI-Friendly Enhancements ✅
+
+**Status:** Complete (2026-01-09)
+
+Features added to improve AI agent usability:
+
+- [x] **Relative paths** - File paths are now relative to project root (e.g., `test/my_test.exs` instead of full absolute path)
+- [x] **Tighter truncation** - Reduced limits for assertion values (500 chars) to reduce output size
+- [x] **`--compact` flag** - JSONL output with minimal fields, one test per line:
+  - Keys: `f` (file:line), `n` (name), `s` (state), `e` (error message, failed only)
+  - Summary line at end: `{"summary":{...}}`
+  - Dramatically reduces output size for large test suites
 
 ---
 
 ## Phase 2: Future Enhancements
 
-**Note:** Phase 2 begins after Phase 1 is validated with real usage.
+**Note:** Prioritized by ROI (Benefit/Difficulty). Higher priority = better ROI.
+
+### High Priority (ROI > 2.0)
+
+#### `--first-failure` [D:2/B:5 → 2.5] 🎯
+Quick iteration mode - only output first failure in detail.
+```bash
+mix test.json --first-failure
+```
+
+#### `--filter-out "pattern"` [D:4/B:8 → 2.0] 🎯
+Exclude failures matching pattern from output. Mark as `"filtered": true` in JSON rather than hiding.
+```bash
+mix test.json --filter-out "credentials" --filter-out "API key"
+```
+Use case: Filter expected failures (missing credentials, rate limits) to focus on real bugs.
+
+### Medium Priority (ROI 1.0-2.0)
+
+#### `--group-by-error` [D:6/B:7 → 1.2] 📋
+Group failures by similar error message. Shows root causes at a glance:
+```json
+{"error_groups": [{"pattern": "Not all sent parameters", "count": 47, "example": "..."}]}
+```
+Use case: When 100 tests fail with the same root cause, show it once.
+
+### Other Future Features
 
 - `--list` flag for test discovery without running
-- JSON Lines format (`--format jsonl`) for streaming
-- Captured logs inclusion option
+- Captured logs inclusion option (`--include-logs`)
 - Integration with CI systems (GitHub Actions output)
 - Custom output templates
 - Optional `Jason` fallback for Elixir versions without `:json`
@@ -278,9 +297,10 @@ Frame
 
 Metadata
 - truncation: object
-  - value_char_limit: integer (default: 10_000)
-  - collection_item_limit: integer (default: 100)
-  - printable_limit: integer (default: 4096)
+  - value_char_limit: integer (default: 500)
+  - expr_char_limit: integer (default: 200)
+  - collection_item_limit: integer (default: 50)
+  - printable_limit: integer (default: 500)
 
 Ordering
 - Tests are sorted by `file`, then `line`, then `name` for determinism.

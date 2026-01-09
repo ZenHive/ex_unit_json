@@ -8,9 +8,11 @@ defmodule ExUnitJSON.JSONEncoder do
   """
 
   # Truncation limits for large values in assertion errors
-  @value_char_limit 10_000
-  @collection_item_limit 100
-  @printable_limit 4096
+  # Kept small to reduce JSON output size for AI agents
+  @value_char_limit 500
+  @expr_char_limit 200
+  @collection_item_limit 50
+  @printable_limit 500
 
   # Internal ExUnit tag keys to filter out (moved to top-level or metadata)
   @internal_tag_keys [
@@ -71,7 +73,7 @@ defmodule ExUnitJSON.JSONEncoder do
     %{
       name: to_string(test.name),
       module: inspect(test.module),
-      file: test.tags[:file],
+      file: make_relative(test.tags[:file]),
       line: test.tags[:line],
       state: encode_state(test.state),
       duration_us: test.time,
@@ -196,9 +198,18 @@ defmodule ExUnitJSON.JSONEncoder do
   defp maybe_add_assertion(base, _error), do: base
 
   @doc false
-  # Formats assertion expression to string
+  # Formats assertion expression to string with truncation
   defp format_expr(nil), do: nil
-  defp format_expr(expr), do: Macro.to_string(expr)
+
+  defp format_expr(expr) do
+    str = Macro.to_string(expr)
+
+    if String.length(str) > @expr_char_limit do
+      String.slice(str, 0, @expr_char_limit) <> "..."
+    else
+      str
+    end
+  end
 
   @doc false
   # Inspects value with truncation limits for JSON safety
@@ -252,11 +263,11 @@ defmodule ExUnitJSON.JSONEncoder do
   defp normalize_arity(_), do: nil
 
   @doc false
-  # Extracts file from stacktrace location
+  # Extracts file from stacktrace location and makes it relative
   defp get_location_file(location) when is_list(location) do
     case Keyword.get(location, :file) do
       nil -> nil
-      file -> to_string(file)
+      file -> make_relative(to_string(file))
     end
   end
 
@@ -280,4 +291,23 @@ defmodule ExUnitJSON.JSONEncoder do
   end
 
   defp get_app(_), do: nil
+
+  @doc false
+  # Makes file paths relative to the current working directory.
+  # Reduces JSON output size and improves readability for AI agents.
+  defp make_relative(nil), do: nil
+
+  defp make_relative(path) when is_binary(path) do
+    cwd = File.cwd!()
+
+    if String.starts_with?(path, cwd) do
+      path
+      |> String.trim_leading(cwd)
+      |> String.trim_leading("/")
+    else
+      path
+    end
+  end
+
+  defp make_relative(path), do: to_string(path)
 end
