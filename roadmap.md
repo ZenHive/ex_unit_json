@@ -1,7 +1,7 @@
 # ex_unit_json
 
-**Status:** In Progress (Task 1 of 8 complete)
-**Last Updated:** 2026-01-08
+**Status:** In Progress (Task 2 of 8 complete)
+**Last Updated:** 2026-01-09
 
 ## Project Overview
 
@@ -16,13 +16,14 @@
 - Claude Code can parse output without grep/tail/sed
 - All ExUnit test states correctly represented in JSON
 - Package published to Hex.pm
+- Stable JSON Schema v1 documented and enforced by tests
 
 **Tech Stack:**
 - Elixir 1.18+ (for built-in `:json` module)
 - ExUnit (formatter API)
 - No external dependencies for core functionality
 
-**Development Timeline:** 1-2 weeks
+**Phases:** 2 (MVP Core + Future Enhancements)
 
 ---
 
@@ -39,6 +40,7 @@
 - [ ] All edge cases handled (Unicode, long values, setup failures)
 - [ ] Tests pass with good coverage
 - [ ] Published to Hex.pm
+- [ ] Output ordering is deterministic (file, line, name)
 
 ---
 
@@ -53,50 +55,17 @@
 
 ---
 
-### Task 2: JSON Encoder - Basic Test Serialization
+### Task 2: JSON Encoder - Basic Test Serialization ✅
 
-**Goal:** Implement `ExUnitJSON.JSONEncoder` to convert ExUnit test structs to JSON-serializable maps.
-
-**Dependencies:** Task 1
-
-**Approach:**
-1. Create `ExUnitJSON.JSONEncoder` module
-2. Implement `encode_test/1` - converts `%ExUnit.Test{}` to map
-3. Implement `encode_state/1` - converts test state tuples to strings
-4. Implement `encode_tags/1` - filters and converts tags
-5. Handle the `:ex_unit_no_meaningful_value` marker
-
-**Key Functions:**
-```elixir
-def encode_test(test) do
-  %{
-    name: to_string(test.name),
-    module: to_string(test.module),
-    file: test.tags[:file],
-    line: test.tags[:line],
-    state: encode_state(test.state),
-    duration_us: test.time,
-    tags: encode_tags(test.tags)
-  }
-end
-```
-
-**Testing Requirements:**
-- [ ] Unit: `encode_test/1` with passed test
-- [ ] Unit: `encode_test/1` with failed test
-- [ ] Unit: `encode_test/1` with skipped test
-- [ ] Unit: `encode_test/1` with excluded test
-- [ ] Unit: `encode_state/1` for all state types
-- [ ] Edge: Unicode in test names
-- [ ] Edge: Very long module names
+**Status:** Complete (2026-01-09) - See [CHANGELOG.md](CHANGELOG.md#task-2-json-encoder---basic-test-serialization)
 
 **Acceptance Criteria:**
-- [ ] All test states correctly encoded
-- [ ] Tags properly filtered (no internal keys exposed)
-- [ ] Output is JSON-serializable (no structs, PIDs, etc.)
-- [ ] Tests pass
-
-**Estimated Complexity:** Medium
+- [x] All test states correctly encoded
+- [x] Tags properly filtered (no internal keys exposed)
+- [x] Output is JSON-serializable (no structs, PIDs, etc.)
+- [x] Tests pass (28 encoder tests)
+- [x] State mapping documented: `nil → "passed"`, `{:failed, _} → "failed"`, `{:invalid, _} → "invalid"`, `{:skipped, _} → "skipped"`, `{:excluded, _} → "excluded"`
+- [x] Truncation policy: non-serializable values use `inspect/1`
 
 ---
 
@@ -112,6 +81,8 @@ end
 3. Implement `encode_assertion_error/1` - extracts left/right/expression
 4. Implement `encode_stacktrace/1` - converts stacktrace to JSON
 5. Handle non-assertion errors (exits, throws)
+6. Use stable inspection with truncation limits for very large values
+7. Emit structured stacktrace frames: file, line, module, function, arity, app
 
 **Key Functions:**
 ```elixir
@@ -134,12 +105,15 @@ end
 - [ ] Unit: Stacktrace encoding
 - [ ] Edge: Very long assertion values (truncation?)
 - [ ] Edge: Binary/non-printable values in assertions
+- [ ] Edge: Non-inspectable values fallback to string via `inspect/2`
 
 **Acceptance Criteria:**
 - [ ] All failure types correctly serialized
 - [ ] Assertion left/right values captured
 - [ ] Stacktraces include file/line info
 - [ ] Output remains valid JSON
+- [ ] Stacktrace frames are structured, not just strings
+- [ ] Truncation policy respected and documented in output metadata
 
 **Estimated Complexity:** Medium
 
@@ -183,6 +157,7 @@ defstruct [
 - [ ] All events properly accumulated
 - [ ] State maintains correct order
 - [ ] No crashes on unexpected events
+- [ ] Option plumbing uses centralized `ExUnitJSON.Config`
 
 **Estimated Complexity:** Medium
 
@@ -196,10 +171,12 @@ defstruct [
 
 **Approach:**
 1. Implement `handle_cast({:suite_finished, times_us}, state)`
-2. Build complete output structure with summary
+ 2. Build complete output structure with summary
 3. Use `:json.encode/1` for JSON serialization
 4. Output to stdout (default) or file (if configured)
 5. Handle output options from Application.get_env
+6. Sort `tests` deterministically by file, line, name unless configured otherwise
+7. Include `version` and truncation metadata in root document
 
 **Output Structure:**
 ```json
@@ -226,12 +203,15 @@ defstruct [
 - [ ] Integration: Full test run produces valid JSON
 - [ ] Edge: Empty test suite
 - [ ] Edge: All tests excluded
+- [ ] Unit: Summary unaffected by filtering flags
 
 **Acceptance Criteria:**
 - [ ] Complete JSON document output on suite finish
 - [ ] Summary statistics accurate
 - [ ] Version field present for future compatibility
 - [ ] Valid JSON parseable by any JSON parser
+- [ ] Summary reflects full suite even when `tests` are filtered
+- [ ] Tests array order is deterministic
 
 **Estimated Complexity:** Medium
 
@@ -249,6 +229,7 @@ defstruct [
 3. Configure ExUnit with `ExUnitJSON.Formatter`
 4. Delegate to `Mix.Tasks.Test`
 5. Handle exit codes properly
+6. Define `@switches` (summary_only, failures_only, output) and document `mix help test.json`
 
 **Key Implementation:**
 ```elixir
@@ -274,12 +255,14 @@ end
 - [ ] Integration: `mix test.json` runs and outputs JSON
 - [ ] Integration: Exit code reflects test results
 - [ ] Integration: Test file arguments pass through
+- [ ] Unit: `mix help test.json` shows documented switches
 
 **Acceptance Criteria:**
 - [ ] `mix test.json` produces JSON output
 - [ ] All `mix test` arguments supported (files, line numbers)
 - [ ] Exit code 0 on pass, non-zero on failure
 - [ ] `mix help test.json` shows documentation
+- [ ] Options validated via `ExUnitJSON.Config`
 
 **Estimated Complexity:** Medium
 
@@ -304,12 +287,14 @@ end
 - [ ] Unit: --failures-only filters to failures
 - [ ] Unit: Both flags together work correctly
 - [ ] Integration: Real test run with flags
+- [ ] Unit: Summary counts unchanged by filters
 
 **Acceptance Criteria:**
 - [ ] `mix test.json --summary-only` outputs only summary
 - [ ] `mix test.json --failures-only` outputs only failed tests
 - [ ] Flags can be combined
 - [ ] Documentation updated
+- [ ] Summary reflects full suite regardless of filters
 
 **Estimated Complexity:** Simple
 
@@ -328,12 +313,15 @@ end
 4. Add CHANGELOG.md
 5. Verify all tests pass
 6. Prepare for Hex.pm publish
+7. Document JSON Schema v1 in README and include example
+8. Add a small golden test suite (pass, fail, skip, excluded, setup_all failure)
 
 **Testing Requirements:**
 - [ ] Unit: --output writes to file
 - [ ] Unit: File contains valid JSON
 - [ ] Integration: Full workflow with file output
 - [ ] Edge: Invalid file path handling
+- [ ] Integration: Golden suite produces expected JSON (schema + ordering)
 
 **Acceptance Criteria:**
 - [ ] `mix test.json --output results.json` works
@@ -341,6 +329,7 @@ end
 - [ ] CHANGELOG.md created
 - [ ] `mix hex.build` succeeds
 - [ ] All tests pass
+- [ ] JSON Schema v1 documented and tests validate against it
 
 **Estimated Complexity:** Simple
 
@@ -355,6 +344,7 @@ end
 - Captured logs inclusion option
 - Integration with CI systems (GitHub Actions output)
 - Custom output templates
+- Optional `Jason` fallback for Elixir versions without `:json`
 
 ---
 
@@ -364,14 +354,17 @@ end
 - **GenServer Formatter:** Accumulate all results, output at end (buffered, not streaming)
 - **Separate Encoder:** JSON encoding logic isolated for testability
 - **Application.get_env for Options:** Pass options from Mix task to formatter
+- **Config Module:** Centralize option parsing/validation in `ExUnitJSON.Config`
+ - **Codec Boundary:** Encoder returns plain maps/lists; actual JSON serialization only in formatter
 
 ### Key Libraries/Dependencies
-- **None for core:** Use Elixir 1.18's built-in `:json` module
+- **Primary:** Use Elixir 1.18+'s built-in `:json` module when available
+- **Fallback:** Use `Jason` if `:json` is unavailable (optional dependency)
 - **ex_doc:** Documentation only (dev dependency)
 
 ### Compatibility
-- **Elixir 1.18+:** Required for `:json` module
-- **Earlier versions:** Could add Jason as optional dependency (Phase 2)
+- **Elixir 1.18+:** Preferred (native `:json`)
+- **Earlier versions:** Supported via optional Jason fallback
 
 ---
 
@@ -382,6 +375,7 @@ end
 | ExUnit formatter API changes | Low | Medium | Pin to stable API, test against multiple Elixir versions |
 | Large test suites produce huge JSON | Medium | Low | Add `--failures-only` flag, consider streaming in Phase 2 |
 | Non-serializable values in assertions | Medium | Medium | Robust `inspect/1` fallback for all values |
+| Users without Elixir 1.18 | Medium | Medium | Provide Jason fallback and document compatibility |
 
 ---
 
@@ -389,8 +383,8 @@ end
 
 - [x] Hex package vs Elixir core? → Hex package
 - [x] Streaming vs buffered JSON? → Buffered (with filtering options)
-- [ ] Should we truncate very long assertion values?
-- [ ] Include captured logs by default or opt-in?
+- [x] Should we truncate very long assertion values? → Yes, with sensible, documented defaults
+- [ ] Include captured logs by default or opt-in? → Opt-in (planned for Phase 2)
 
 ---
 
@@ -398,4 +392,62 @@ end
 
 - [ExUnit.Formatter docs](https://hexdocs.pm/ex_unit/ExUnit.Formatter.html)
 - [ExUnit source - CLIFormatter](https://github.com/elixir-lang/elixir/blob/main/lib/ex_unit/lib/ex_unit/cli_formatter.ex)
-- [Plan file](/Users/efries/.claude/plans/mossy-plotting-puffin.md)
+
+---
+
+## Output Schema v1
+
+Root
+- version: integer (1)
+- seed: integer
+- summary: object
+- tests: array of test objects (omitted with `--summary-only`; filtered with `--failures-only`)
+- meta: object (optional; includes truncation settings)
+
+Summary
+- total: integer
+- passed: integer
+- failed: integer
+- skipped: integer
+- excluded: integer
+- duration_us: integer (microseconds)
+- result: string ("passed" | "failed")
+
+Test
+- name: string
+- module: string
+- file: string
+- line: integer
+- state: string ("passed" | "failed" | "skipped" | "excluded")
+- duration_us: integer (microseconds)
+- tags: object (filtered)
+- failures: array of failure objects (only when failed)
+
+Failure
+- kind: string (e.g., "error", "exit", "throw", "assertion")
+- message: string
+- assertion: object (optional; for assertion errors)
+  - left: string (inspected/truncated)
+  - right: string (inspected/truncated)
+  - expr: string
+- stacktrace: array of frames
+
+Frame
+- file: string
+- line: integer
+- module: string (optional)
+- function: string (optional)
+- arity: integer (optional)
+- app: string (optional)
+
+Metadata
+- truncation: object
+  - value_char_limit: integer (default: 10_000)
+  - collection_item_limit: integer (default: 100)
+  - printable_limit: integer (default: 4096)
+
+Ordering
+- Tests are sorted by `file`, then `line`, then `name` for determinism.
+
+Versioning
+- Breaking schema changes bump `version` and are noted in CHANGELOG.

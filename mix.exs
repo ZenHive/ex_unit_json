@@ -2,7 +2,7 @@ defmodule ExUnitJSON.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/yourusername/ex_unit_json"
+  @source_url "https://github.com/ZenHive/ex_unit_json"
 
   def project do
     [
@@ -27,16 +27,14 @@ defmodule ExUnitJSON.MixProject do
 
   defp deps do
     [
-      # Runtime
-      {:jason, "~> 1.4"},
-
       # Dev/Test
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.0", only: :dev},
-      {:styler, "~> 1.0", only: [:dev, :test], runtime: false}
+      {:styler, "~> 1.0", only: [:dev, :test], runtime: false},
+      {:doctor, "~> 0.22.0", only: :dev}
     ]
   end
 
