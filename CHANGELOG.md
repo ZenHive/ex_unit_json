@@ -96,3 +96,39 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 - `mix dialyzer` passes (0 warnings)
 - `mix format --check-formatted` passes
 - `mix credo --strict` passes (staged files)
+
+---
+
+### Task 4: Formatter GenServer - Event Collection
+
+**Completed:** 2026-01-09
+
+**What was done:**
+- Created `ExUnitJSON.Config` module for centralized option handling
+- Implemented `ExUnitJSON.Formatter` GenServer event handlers
+- Handles `{:suite_started, opts}` - captures seed from suite options
+- Handles `{:test_finished, test}` - accumulates encoded test results
+- Handles `{:module_finished, module}` - tracks setup_all failures
+- Silently ignores unknown events (no crashes)
+- Added `:get_state` call handler for testing
+- 39 new tests (12 Config, 27 Formatter)
+
+**Key implementation details:**
+- Config module validates and filters option keys
+- Options merged from Application env and start_link args
+- Tests prepended to list for O(1) accumulation (reversed later in Task 5)
+- Module failures only tracked when state is `{:failed, _}`
+- Full integration test simulating complete test suite lifecycle
+
+**Files created:**
+- `lib/ex_unit_json/config.ex` - Option parsing/validation
+- `test/ex_unit_json/config_test.exs` - 12 tests
+- `test/ex_unit_json/formatter_test.exs` - 27 tests
+
+**Files modified:**
+- `lib/ex_unit_json/formatter.ex` - Full event handler implementation
+
+**Verification:**
+- `mix test` passes (91 tests)
+- `mix dialyzer` passes (0 warnings)
+- Coverage: 90% total (Formatter: 100%, Config: 100%)

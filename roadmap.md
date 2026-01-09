@@ -1,6 +1,6 @@
 # ex_unit_json
 
-**Status:** In Progress (Task 3 of 8 complete)
+**Status:** In Progress (Task 4 of 8 complete)
 **Last Updated:** 2026-01-09
 
 ## Project Overview
@@ -83,47 +83,16 @@
 
 ---
 
-### Task 4: Formatter GenServer - Event Collection
+### Task 4: Formatter GenServer - Event Collection ✅
 
-**Goal:** Implement `ExUnitJSON.Formatter` GenServer that receives ExUnit events and accumulates results.
-
-**Dependencies:** Task 3
-
-**Approach:**
-1. Create `ExUnitJSON.Formatter` as GenServer
-2. Implement `init/1` - initialize state with options
-3. Implement `handle_cast/2` for:
-   - `{:suite_started, opts}` - capture seed
-   - `{:test_finished, test}` - accumulate test
-   - `{:module_finished, module}` - track module failures
-4. Store accumulated tests in state
-
-**Key Structure:**
-```elixir
-defstruct [
-  :seed,
-  :start_time,
-  tests: [],
-  modules: [],
-  opts: []
-]
-```
-
-**Testing Requirements:**
-- [ ] Unit: init/1 creates correct initial state
-- [ ] Unit: Handles :suite_started event
-- [ ] Unit: Accumulates :test_finished events
-- [ ] Unit: Handles :module_finished for setup_all failures
-- [ ] Integration: Receives events from real ExUnit run
+**Status:** Complete (2026-01-09) - See [CHANGELOG.md](CHANGELOG.md#task-4-formatter-genserver---event-collection)
 
 **Acceptance Criteria:**
-- [ ] GenServer starts successfully
-- [ ] All events properly accumulated
-- [ ] State maintains correct order
-- [ ] No crashes on unexpected events
-- [ ] Option plumbing uses centralized `ExUnitJSON.Config`
-
-**Estimated Complexity:** Medium
+- [x] GenServer starts successfully
+- [x] All events properly accumulated
+- [x] State maintains correct order
+- [x] No crashes on unexpected events
+- [x] Option plumbing uses centralized `ExUnitJSON.Config`
 
 ---
 
