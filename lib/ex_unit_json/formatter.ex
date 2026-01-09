@@ -79,8 +79,15 @@ defmodule ExUnitJSON.Formatter do
     end
   end
 
-  def handle_cast({:suite_finished, _times_us}, state) do
-    # TODO: Task 5 - Output JSON document
+  def handle_cast({:suite_finished, times_us}, state) do
+    document = build_document(state, times_us)
+    json = :json.encode(document)
+
+    case Config.output_path() do
+      nil -> IO.write(json)
+      path -> File.write!(path, json)
+    end
+
     {:noreply, state}
   end
 
@@ -108,6 +115,7 @@ defmodule ExUnitJSON.Formatter do
 
   @doc false
   # Encodes a module failure (from setup_all) to a JSON-safe map
+  @spec encode_module_failure(ExUnit.TestModule.t()) :: map()
   defp encode_module_failure(%ExUnit.TestModule{} = module) do
     %{
       name: inspect(module.name),
@@ -115,5 +123,82 @@ defmodule ExUnitJSON.Formatter do
       state: "failed",
       failures: JSONEncoder.encode_failure(module.state)
     }
+  end
+
+  @doc false
+  # Builds the complete JSON document from accumulated state
+  @spec build_document(t(), %{async: non_neg_integer(), sync: non_neg_integer()}) :: map()
+  defp build_document(state, times_us) do
+    tests = state.tests |> Enum.reverse() |> sort_tests()
+
+    doc = %{
+      version: 1,
+      seed: state.seed,
+      summary: build_summary(tests, times_us)
+    }
+
+    # Add tests unless summary_only
+    doc =
+      case filter_tests(tests, state.opts) do
+        nil -> doc
+        filtered -> Map.put(doc, :tests, filtered)
+      end
+
+    # Add module failures if any
+    if state.modules == [] do
+      doc
+    else
+      Map.put(doc, :module_failures, Enum.reverse(state.modules))
+    end
+  end
+
+  @doc false
+  # Increments the count for a test state using explicit pattern matching.
+  # Safer than String.to_existing_atom/1 - won't crash on unexpected input.
+  @spec increment_state_count(map(), String.t()) :: map()
+  defp increment_state_count(acc, "passed"), do: Map.update!(acc, :passed, &(&1 + 1))
+  defp increment_state_count(acc, "failed"), do: Map.update!(acc, :failed, &(&1 + 1))
+  defp increment_state_count(acc, "skipped"), do: Map.update!(acc, :skipped, &(&1 + 1))
+  defp increment_state_count(acc, "excluded"), do: Map.update!(acc, :excluded, &(&1 + 1))
+  defp increment_state_count(acc, "invalid"), do: Map.update!(acc, :invalid, &(&1 + 1))
+
+  @doc false
+  # Builds summary statistics from all tests.
+  @spec build_summary([map()], %{async: non_neg_integer(), sync: non_neg_integer()}) :: map()
+  defp build_summary(tests, times_us) do
+    counts =
+      Enum.reduce(tests, %{passed: 0, failed: 0, skipped: 0, excluded: 0, invalid: 0}, fn test, acc ->
+        increment_state_count(acc, test.state)
+      end)
+
+    %{
+      total: length(tests),
+      passed: counts.passed,
+      failed: counts.failed,
+      skipped: counts.skipped,
+      excluded: counts.excluded,
+      invalid: counts.invalid,
+      duration_us: times_us.async + times_us.sync,
+      result: if(counts.failed > 0 or counts.invalid > 0, do: "failed", else: "passed")
+    }
+  end
+
+  @doc false
+  # Sorts tests deterministically by file, line, name
+  @spec sort_tests([map()]) :: [map()]
+  defp sort_tests(tests) do
+    Enum.sort_by(tests, fn t -> {t.file, t.line, t.name} end)
+  end
+
+  @doc false
+  # Filters tests based on configuration options.
+  # Returns nil for summary_only (omit tests array), filtered list, or all tests.
+  @spec filter_tests([map()], keyword()) :: [map()] | nil
+  defp filter_tests(tests, opts) do
+    cond do
+      Keyword.get(opts, :summary_only, false) -> nil
+      Keyword.get(opts, :failures_only, false) -> Enum.filter(tests, &(&1.state == "failed"))
+      true -> tests
+    end
   end
 end

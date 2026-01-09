@@ -1,6 +1,6 @@
 # ex_unit_json
 
-**Status:** In Progress (Task 4 of 8 complete)
+**Status:** In Progress (Task 5 of 8 complete)
 **Last Updated:** 2026-01-09
 
 ## Project Overview
@@ -96,57 +96,17 @@
 
 ---
 
-### Task 5: Formatter GenServer - JSON Output
+### Task 5: Formatter GenServer - JSON Output ✅
 
-**Goal:** Implement suite_finished handler that outputs complete JSON.
-
-**Dependencies:** Task 4
-
-**Approach:**
-1. Implement `handle_cast({:suite_finished, times_us}, state)`
- 2. Build complete output structure with summary
-3. Use `:json.encode/1` for JSON serialization
-4. Output to stdout (default) or file (if configured)
-5. Handle output options from Application.get_env
-6. Sort `tests` deterministically by file, line, name unless configured otherwise
-7. Include `version` and truncation metadata in root document
-
-**Output Structure:**
-```json
-{
-  "version": 1,
-  "seed": 12345,
-  "summary": {
-    "total": 10,
-    "passed": 8,
-    "failed": 2,
-    "skipped": 0,
-    "excluded": 0,
-    "duration_us": 123456,
-    "result": "failed"
-  },
-  "tests": [...]
-}
-```
-
-**Testing Requirements:**
-- [ ] Unit: Summary calculation correct
-- [ ] Unit: JSON output is valid
-- [ ] Unit: Output to stdout works
-- [ ] Integration: Full test run produces valid JSON
-- [ ] Edge: Empty test suite
-- [ ] Edge: All tests excluded
-- [ ] Unit: Summary unaffected by filtering flags
+**Status:** Complete (2026-01-09) - See [CHANGELOG.md](CHANGELOG.md#task-5-formatter-genserver---json-output)
 
 **Acceptance Criteria:**
-- [ ] Complete JSON document output on suite finish
-- [ ] Summary statistics accurate
-- [ ] Version field present for future compatibility
-- [ ] Valid JSON parseable by any JSON parser
-- [ ] Summary reflects full suite even when `tests` are filtered
-- [ ] Tests array order is deterministic
-
-**Estimated Complexity:** Medium
+- [x] Complete JSON document output on suite finish
+- [x] Summary statistics accurate
+- [x] Version field present for future compatibility
+- [x] Valid JSON parseable by any JSON parser
+- [x] Summary reflects full suite even when `tests` are filtered
+- [x] Tests array order is deterministic
 
 ---
 

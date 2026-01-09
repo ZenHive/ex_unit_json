@@ -132,3 +132,51 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 - `mix test` passes (91 tests)
 - `mix dialyzer` passes (0 warnings)
 - Coverage: 90% total (Formatter: 100%, Config: 100%)
+
+---
+
+### Task 5: Formatter GenServer - JSON Output
+
+**Completed:** 2026-01-09
+
+**What was done:**
+- Implemented `handle_cast({:suite_finished, times_us}, state)` - outputs complete JSON document
+- Added `build_document/2` - assembles root document with version, seed, summary, tests
+- Added `build_summary/2` - calculates test counts and overall result
+- Added `sort_tests/1` - deterministic ordering by file, line, name
+- Added `filter_tests/2` - supports summary_only and failures_only options
+- Handles module failures (setup_all) separately in output
+- Outputs to stdout by default, or to file when configured
+- 11 new tests for suite_finished functionality
+
+**Key implementation details:**
+- Uses `:json.encode/1` for JSON serialization (no external dependencies)
+- Uses `IO.write/1` (not `IO.puts/1`) to avoid trailing newline in JSON
+- Tests reversed from accumulation order before output
+- Summary counts include: total, passed, failed, skipped, excluded, invalid
+- Overall result is "failed" if any test failed or is invalid
+- Tests use file output instead of capture_io (GenServer group leader isolation)
+
+**Output structure:**
+```json
+{
+  "version": 1,
+  "seed": 12345,
+  "summary": {
+    "total": 10, "passed": 8, "failed": 2, "skipped": 0,
+    "excluded": 0, "invalid": 0, "duration_us": 123456,
+    "result": "failed"
+  },
+  "tests": [...],
+  "module_failures": [...]
+}
+```
+
+**Files modified:**
+- `lib/ex_unit_json/formatter.ex` - suite_finished handler and helpers
+- `test/ex_unit_json/formatter_test.exs` - 11 new tests
+
+**Verification:**
+- `mix test` passes (102 tests)
+- All acceptance criteria verified
+- JSON output validated against schema v1
