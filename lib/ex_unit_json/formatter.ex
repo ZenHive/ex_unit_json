@@ -178,9 +178,20 @@ defmodule ExUnitJSON.Formatter do
       seed: state.seed,
       summary: summary
     }
+    |> maybe_add_hint(state.opts)
     |> maybe_add_tests(filtered_tests, state.opts)
     |> maybe_add_error_groups(tests, filtered_tests, state.opts)
     |> maybe_add_module_failures(state.modules)
+  end
+
+  @doc false
+  # Adds hint field to document when present in opts (suggests --failed for faster iteration)
+  @spec maybe_add_hint(map(), keyword()) :: map()
+  defp maybe_add_hint(doc, opts) do
+    case Keyword.get(opts, :hint) do
+      nil -> doc
+      hint -> Map.put(doc, :hint, hint)
+    end
   end
 
   @doc false

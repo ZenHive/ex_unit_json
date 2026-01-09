@@ -6,6 +6,19 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ## v0.1.3 (2026-01-09)
 
+### Published to Hex.pm 🎉
+
+First public release! Available at [hex.pm/packages/ex_unit_json](https://hex.pm/packages/ex_unit_json)
+
+**Features included in v0.1.3:**
+- JSON output for ExUnit test results
+- `--summary-only`, `--failures-only`, `--compact` output modes
+- `--filter-out`, `--group-by-error`, `--first-failure` for AI workflows
+- `--quiet` flag to suppress Logger noise
+- `--output FILE` for file output
+- Smart `--failed` hint for iteration workflows
+- Full passthrough of ExUnit flags (`--only`, `--exclude`, `--seed`, etc.)
+
 ### Documentation
 
 #### Improved jq usage guidance

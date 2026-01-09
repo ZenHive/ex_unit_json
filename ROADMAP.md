@@ -1,6 +1,6 @@
 # ex_unit_json
 
-**Status:** Phase 1 Complete (Task 8 of 8 complete)
+**Status:** Phase 1 Complete ✅ (Published to Hex.pm as v0.1.3)
 **Last Updated:** 2026-01-09
 
 ## Project Overview
@@ -39,7 +39,7 @@
 - [x] `--failures-only` flag works
 - [x] All edge cases handled (Unicode, long values, setup failures)
 - [x] Tests pass with good coverage (150 tests)
-- [ ] Published to Hex.pm
+- [x] Published to Hex.pm (v0.1.3)
 - [x] Output ordering is deterministic (file, line, name)
 
 ---
@@ -199,11 +199,66 @@ Use case: When 100 tests fail with the same root cause, show it once.
 
 ### High Priority (ROI > 2.0)
 
-(No remaining high-priority items)
+#### Consistent `failure_message` Field [D:2/B:7 → 3.5] ⚠️ Schema v2
+Populate the top-level `failure_message` field from `failures[0].message` when present. Currently often `null`, forcing users to drill into the failures array.
+
+**Note:** This is a schema change. Will require Schema v2 bump since v1 already published.
+
+**Files to update:**
+- `lib/ex_unit_json/json_encoder.ex` - Implementation
+- `ROADMAP.md` - Output Schema section
+- `README.md` - Schema documentation
+- `AGENT.md` - AI usage guide
+- `~/.claude/includes/ex-unit-json.md` - Global Claude include (user's system)
+
+**Current workaround:**
+```bash
+jq -r '.tests[] | select(.state == "failed") | .failures[0].message[0:100]'
+```
+
+#### `--filter-in "pattern"` [D:2/B:5 → 2.5]
+Inverse of `--filter-out`: only show failures matching a pattern. Use case: focus on specific error categories.
+```bash
+# Show only timeout-related failures
+mix test.json --quiet --failures-only --filter-in "timeout|GenServer"
+```
+
+#### `--min-duration MS` Filter [D:2/B:4 → 2.0]
+Only output tests taking longer than specified milliseconds. Use case: find slow tests for optimization.
+```bash
+# Only show tests taking > 5 seconds
+mix test.json --quiet --min-duration 5000
+```
 
 ### Medium Priority (ROI 1.0-2.0)
 
-(No remaining medium-priority items)
+#### Error Type Classification [D:5/B:6 → 1.2]
+Automatic categorization of failure types. Helps AI identify patterns faster without parsing messages.
+```json
+{
+  "failures": [{
+    "message": "...",
+    "error_type": "assertion",      // or "crash", "timeout", "protocol_error"
+    "error_category": "api_error"   // extracted from message patterns
+  }]
+}
+```
+
+#### `--group-by TAG` Option [D:6/B:6 → 1.0]
+Group failures by custom tags or module prefixes. Useful for large multi-service test suites.
+```bash
+# Group by module prefix
+mix test.json --quiet --group-by-module-prefix "CCXT.Exchanges"
+```
+Output:
+```json
+{
+  "groups": {
+    "binance": {"total": 15, "failed": 3, "tests": [...]},
+    "bybit": {"total": 12, "failed": 0, "tests": [...]}
+  }
+}
+```
 
 ### Other Future Features
 

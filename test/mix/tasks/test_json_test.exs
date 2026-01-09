@@ -725,36 +725,6 @@ defmodule Mix.Tasks.Test.JsonTest do
       refute test_path?("integration")
     end
 
-    test "format_age/1 handles less than a minute" do
-      assert format_age(0) == "less than a minute"
-      assert format_age(30) == "less than a minute"
-      assert format_age(59) == "less than a minute"
-    end
-
-    test "format_age/1 handles singular minute" do
-      assert format_age(60) == "1 minute"
-      assert format_age(90) == "1 minute"
-      assert format_age(119) == "1 minute"
-    end
-
-    test "format_age/1 handles plural minutes" do
-      assert format_age(120) == "2 minutes"
-      assert format_age(300) == "5 minutes"
-      assert format_age(3599) == "59 minutes"
-    end
-
-    test "format_age/1 handles singular hour" do
-      assert format_age(3600) == "1 hour"
-      assert format_age(5400) == "1 hour"
-      assert format_age(7199) == "1 hour"
-    end
-
-    test "format_age/1 handles plural hours" do
-      assert format_age(7200) == "2 hours"
-      assert format_age(10_800) == "3 hours"
-      assert format_age(86_400) == "24 hours"
-    end
-
     test "count_previous_failures/1 counts lines in file" do
       path = Path.join(System.tmp_dir!(), "test_failures_#{System.unique_integer([:positive])}")
       File.write!(path, "test/a.exs:1\ntest/b.exs:2\ntest/c.exs:3")
@@ -791,6 +761,48 @@ defmodule Mix.Tasks.Test.JsonTest do
         File.rm!(path)
       end
     end
+
+    test "maybe_add_hint_opt/2 adds hint when .mix_test_failures exists" do
+      failures_file = Path.join(System.tmp_dir!(), "test_hint_#{System.unique_integer([:positive])}")
+      File.write!(failures_file, "test/a.exs:1\ntest/b.exs:2")
+
+      try do
+        opts = maybe_add_hint_opt([], [], failures_file)
+        assert opts[:hint] =~ "2 test(s) failed previously"
+        assert opts[:hint] =~ "--failed"
+      after
+        File.rm!(failures_file)
+      end
+    end
+
+    test "maybe_add_hint_opt/2 returns unchanged opts when --failed flag present" do
+      failures_file = Path.join(System.tmp_dir!(), "test_hint_failed_#{System.unique_integer([:positive])}")
+      File.write!(failures_file, "test/a.exs:1")
+
+      try do
+        opts = maybe_add_hint_opt([], ["--failed"], failures_file)
+        refute Keyword.has_key?(opts, :hint)
+      after
+        File.rm!(failures_file)
+      end
+    end
+
+    test "maybe_add_hint_opt/2 returns unchanged opts when specific test file targeted" do
+      failures_file = Path.join(System.tmp_dir!(), "test_hint_target_#{System.unique_integer([:positive])}")
+      File.write!(failures_file, "test/a.exs:1")
+
+      try do
+        opts = maybe_add_hint_opt([], ["test/specific_test.exs"], failures_file)
+        refute Keyword.has_key?(opts, :hint)
+      after
+        File.rm!(failures_file)
+      end
+    end
+
+    test "maybe_add_hint_opt/2 returns unchanged opts when no failures file exists" do
+      opts = maybe_add_hint_opt([], [], "/nonexistent/path/to/failures")
+      refute Keyword.has_key?(opts, :hint)
+    end
   end
 
   # Helper functions duplicating private module logic for test isolation
@@ -798,22 +810,32 @@ defmodule Mix.Tasks.Test.JsonTest do
     String.ends_with?(arg, ".exs") or String.contains?(arg, ".exs:")
   end
 
-  defp format_age(seconds) when seconds < 60, do: "less than a minute"
-
-  defp format_age(seconds) when seconds < 3600 do
-    mins = div(seconds, 60)
-    if mins == 1, do: "1 minute", else: "#{mins} minutes"
-  end
-
-  defp format_age(seconds) do
-    hours = div(seconds, 3600)
-    if hours == 1, do: "1 hour", else: "#{hours} hours"
-  end
-
   defp count_previous_failures(path) do
     case File.read(path) do
       {:ok, content} -> content |> String.split("\n", trim: true) |> length()
       {:error, _} -> 0
+    end
+  end
+
+  # Helper for testing hint logic with configurable failures file path
+  defp maybe_add_hint_opt(opts, test_args, failures_file) do
+    has_failed_flag = "--failed" in test_args
+    has_specific_target = Enum.any?(test_args, &test_path?/1)
+
+    cond do
+      has_failed_flag ->
+        opts
+
+      has_specific_target ->
+        opts
+
+      not File.exists?(failures_file) ->
+        opts
+
+      true ->
+        count = count_previous_failures(failures_file)
+        hint = "#{count} test(s) failed previously. Use --failed to re-run only those."
+        Keyword.put(opts, :hint, hint)
     end
   end
 
