@@ -7,6 +7,24 @@ defmodule ExUnitJSON.JSONEncoder do
   Elixir's built-in `:json` module.
   """
 
+  # Truncation limits for large values in assertion errors
+  @value_char_limit 10_000
+  @collection_item_limit 100
+  @printable_limit 4096
+
+  # Internal ExUnit tag keys to filter out (moved to top-level or metadata)
+  @internal_tag_keys [
+    :registered,
+    :file,
+    :line,
+    :describe,
+    :describe_line,
+    :async,
+    :module,
+    :test,
+    :test_type
+  ]
+
   @typedoc "An ExUnit test struct"
   @type test :: %ExUnit.Test{}
 
@@ -34,7 +52,8 @@ defmodule ExUnitJSON.JSONEncoder do
           line: non_neg_integer() | nil,
           state: String.t(),
           duration_us: non_neg_integer(),
-          tags: map()
+          tags: map(),
+          failures: list(map())
         }
 
   @doc """
@@ -56,7 +75,8 @@ defmodule ExUnitJSON.JSONEncoder do
       line: test.tags[:line],
       state: encode_state(test.state),
       duration_us: test.time,
-      tags: encode_tags(test.tags)
+      tags: encode_tags(test.tags),
+      failures: encode_failure(test.state)
     }
   end
 
@@ -77,19 +97,6 @@ defmodule ExUnitJSON.JSONEncoder do
   def encode_state({:skipped, _}), do: "skipped"
   def encode_state({:excluded, _}), do: "excluded"
   def encode_state({:invalid, _}), do: "invalid"
-
-  # Internal ExUnit tag keys to filter out (moved to top-level or metadata)
-  @internal_tag_keys [
-    :registered,
-    :file,
-    :line,
-    :describe,
-    :describe_line,
-    :async,
-    :module,
-    :test,
-    :test_type
-  ]
 
   @doc """
   Encodes test tags, filtering out internal ExUnit keys.
@@ -140,8 +147,137 @@ defmodule ExUnitJSON.JSONEncoder do
   Handles assertion errors specially to extract left/right values.
   """
   @spec encode_failure(test_state()) :: list(map())
-  def encode_failure(_failure) do
-    # TODO: Implement in Task 3
-    []
+  def encode_failure({:failed, failures}) when is_list(failures) do
+    Enum.map(failures, &encode_single_failure/1)
   end
+
+  def encode_failure(_state), do: []
+
+  @doc false
+  # Encodes a single failure tuple {kind, error, stacktrace}
+  defp encode_single_failure({kind, error, stacktrace}) do
+    base = %{
+      kind: encode_failure_kind(kind, error),
+      message: format_error_message(error),
+      stacktrace: encode_stacktrace(stacktrace)
+    }
+
+    maybe_add_assertion(base, error)
+  end
+
+  @doc false
+  # Maps failure kind to string, detecting assertion errors
+  defp encode_failure_kind(_kind, %ExUnit.AssertionError{}), do: "assertion"
+  defp encode_failure_kind(:error, _error), do: "error"
+  defp encode_failure_kind(:exit, _error), do: "exit"
+  defp encode_failure_kind(:throw, _error), do: "throw"
+  defp encode_failure_kind(kind, _error), do: to_string(kind)
+
+  @doc false
+  # Safely extracts error message
+  defp format_error_message(error) when is_exception(error) do
+    Exception.message(error)
+  end
+
+  defp format_error_message(error), do: inspect(error)
+
+  @doc false
+  # Adds assertion details for ExUnit.AssertionError
+  defp maybe_add_assertion(base, %ExUnit.AssertionError{} = error) do
+    assertion = %{
+      left: truncate_and_inspect(error.left),
+      right: truncate_and_inspect(error.right),
+      expr: format_expr(error.expr)
+    }
+
+    Map.put(base, :assertion, assertion)
+  end
+
+  defp maybe_add_assertion(base, _error), do: base
+
+  @doc false
+  # Formats assertion expression to string
+  defp format_expr(nil), do: nil
+  defp format_expr(expr), do: Macro.to_string(expr)
+
+  @doc false
+  # Inspects value with truncation limits for JSON safety
+  defp truncate_and_inspect(value) do
+    inspected =
+      inspect(value,
+        limit: @collection_item_limit,
+        printable_limit: @printable_limit
+      )
+
+    if String.length(inspected) > @value_char_limit do
+      String.slice(inspected, 0, @value_char_limit) <> "..."
+    else
+      inspected
+    end
+  end
+
+  @doc """
+  Encodes a stacktrace to a list of frame maps.
+
+  Each frame contains file, line, and optionally module, function, arity, and app.
+  """
+  @spec encode_stacktrace(list()) :: list(map())
+  def encode_stacktrace(stacktrace) when is_list(stacktrace) do
+    Enum.map(stacktrace, &encode_stacktrace_frame/1)
+  end
+
+  def encode_stacktrace(_), do: []
+
+  @doc false
+  # Encodes a single stacktrace frame
+  defp encode_stacktrace_frame({module, function, arity, location}) do
+    %{
+      module: inspect(module),
+      function: to_string(function),
+      arity: normalize_arity(arity),
+      file: get_location_file(location),
+      line: get_location_line(location),
+      app: get_app(module)
+    }
+  end
+
+  defp encode_stacktrace_frame(_) do
+    %{module: nil, function: nil, arity: nil, file: nil, line: nil, app: nil}
+  end
+
+  @doc false
+  # Normalizes arity (can be integer or list of args)
+  defp normalize_arity(arity) when is_integer(arity), do: arity
+  defp normalize_arity(args) when is_list(args), do: length(args)
+  defp normalize_arity(_), do: nil
+
+  @doc false
+  # Extracts file from stacktrace location
+  defp get_location_file(location) when is_list(location) do
+    case Keyword.get(location, :file) do
+      nil -> nil
+      file -> to_string(file)
+    end
+  end
+
+  defp get_location_file(_), do: nil
+
+  @doc false
+  # Extracts line from stacktrace location
+  defp get_location_line(location) when is_list(location) do
+    Keyword.get(location, :line)
+  end
+
+  defp get_location_line(_), do: nil
+
+  @doc false
+  # Gets application name for a module
+  defp get_app(module) when is_atom(module) do
+    case :application.get_application(module) do
+      {:ok, app} -> to_string(app)
+      :undefined -> nil
+    end
+  end
+
+  defp get_app(_), do: nil
 end

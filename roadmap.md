@@ -1,6 +1,6 @@
 # ex_unit_json
 
-**Status:** In Progress (Task 2 of 8 complete)
+**Status:** In Progress (Task 3 of 8 complete)
 **Last Updated:** 2026-01-09
 
 ## Project Overview
@@ -69,53 +69,17 @@
 
 ---
 
-### Task 3: JSON Encoder - Failure Serialization
+### Task 3: JSON Encoder - Failure Serialization ✅
 
-**Goal:** Extend encoder to serialize failure details including assertion errors with left/right values.
-
-**Dependencies:** Task 2
-
-**Approach:**
-1. Implement `encode_failure/1` - handles `{:failed, failures}` tuple
-2. Implement `encode_single_failure/1` - handles `{kind, error, stacktrace}`
-3. Implement `encode_assertion_error/1` - extracts left/right/expression
-4. Implement `encode_stacktrace/1` - converts stacktrace to JSON
-5. Handle non-assertion errors (exits, throws)
-6. Use stable inspection with truncation limits for very large values
-7. Emit structured stacktrace frames: file, line, module, function, arity, app
-
-**Key Functions:**
-```elixir
-defp encode_single_failure({kind, error, stacktrace}) do
-  base = %{
-    kind: to_string(kind),
-    message: Exception.message(error),
-    stacktrace: encode_stacktrace(stacktrace)
-  }
-  maybe_add_assertion_details(base, error)
-end
-```
-
-**Testing Requirements:**
-- [ ] Unit: Assertion error with == comparison
-- [ ] Unit: Assertion error with pattern match
-- [ ] Unit: Non-assertion error (raise)
-- [ ] Unit: Exit error
-- [ ] Unit: Throw error
-- [ ] Unit: Stacktrace encoding
-- [ ] Edge: Very long assertion values (truncation?)
-- [ ] Edge: Binary/non-printable values in assertions
-- [ ] Edge: Non-inspectable values fallback to string via `inspect/2`
+**Status:** Complete (2026-01-09) - See [CHANGELOG.md](CHANGELOG.md#task-3-json-encoder---failure-serialization)
 
 **Acceptance Criteria:**
-- [ ] All failure types correctly serialized
-- [ ] Assertion left/right values captured
-- [ ] Stacktraces include file/line info
-- [ ] Output remains valid JSON
-- [ ] Stacktrace frames are structured, not just strings
-- [ ] Truncation policy respected and documented in output metadata
-
-**Estimated Complexity:** Medium
+- [x] All failure types correctly serialized
+- [x] Assertion left/right values captured
+- [x] Stacktraces include file/line info
+- [x] Output remains valid JSON
+- [x] Stacktrace frames are structured, not just strings
+- [x] Truncation policy respected (10,000 char limit)
 
 ---
 

@@ -222,6 +222,275 @@ defmodule ExUnitJSON.JSONEncoderTest do
     end
   end
 
+  describe "encode_failure/1" do
+    test "returns empty list for passed test" do
+      assert JSONEncoder.encode_failure(nil) == []
+    end
+
+    test "returns empty list for skipped test" do
+      assert JSONEncoder.encode_failure({:skipped, "reason"}) == []
+    end
+
+    test "returns empty list for excluded test" do
+      assert JSONEncoder.encode_failure({:excluded, "filter"}) == []
+    end
+
+    test "returns empty list for invalid test" do
+      assert JSONEncoder.encode_failure({:invalid, SomeModule}) == []
+    end
+
+    test "returns empty list for empty failures list" do
+      assert JSONEncoder.encode_failure({:failed, []}) == []
+    end
+
+    test "encodes assertion error with == comparison" do
+      error = %ExUnit.AssertionError{
+        message: "Assertion failed",
+        left: 1,
+        right: 2,
+        expr: quote(do: 1 == 2)
+      }
+
+      state = {:failed, [{:error, error, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      assert failure.kind == "assertion"
+      assert failure.message =~ "Assertion"
+      assert failure.assertion.left == "1"
+      assert failure.assertion.right == "2"
+      assert failure.assertion.expr == "1 == 2"
+    end
+
+    test "encodes assertion error with pattern match" do
+      error = %ExUnit.AssertionError{
+        message: "match (=) failed",
+        left: {:ok, :value},
+        right: {:error, :fail},
+        expr: quote(do: {:ok, _} = {:error, :fail})
+      }
+
+      state = {:failed, [{:error, error, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      assert failure.kind == "assertion"
+      assert failure.assertion.left == "{:ok, :value}"
+      assert failure.assertion.right == "{:error, :fail}"
+    end
+
+    test "encodes non-assertion error (raise)" do
+      error = %RuntimeError{message: "something went wrong"}
+      state = {:failed, [{:error, error, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      assert failure.kind == "error"
+      assert failure.message == "something went wrong"
+      refute Map.has_key?(failure, :assertion)
+    end
+
+    test "encodes exit error" do
+      state = {:failed, [{:exit, :normal, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      assert failure.kind == "exit"
+      assert failure.message == ":normal"
+    end
+
+    test "encodes throw error" do
+      state = {:failed, [{:throw, :something, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      assert failure.kind == "throw"
+      assert failure.message == ":something"
+    end
+
+    test "encodes unknown failure kind as string" do
+      state = {:failed, [{:custom_kind, "some value", []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      assert failure.kind == "custom_kind"
+      assert failure.message == "\"some value\""
+    end
+
+    test "handles assertion error with nil expr" do
+      error = %ExUnit.AssertionError{
+        message: "Assertion failed",
+        left: 1,
+        right: 2,
+        expr: nil
+      }
+
+      state = {:failed, [{:error, error, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      assert failure.assertion.expr == nil
+    end
+
+    test "encodes multiple failures" do
+      error1 = %RuntimeError{message: "first error"}
+      error2 = %RuntimeError{message: "second error"}
+      state = {:failed, [{:error, error1, []}, {:error, error2, []}]}
+      failures = JSONEncoder.encode_failure(state)
+
+      assert length(failures) == 2
+      assert Enum.at(failures, 0).message == "first error"
+      assert Enum.at(failures, 1).message == "second error"
+    end
+
+    test "truncates very long assertion values" do
+      long_value = String.duplicate("a", 15_000)
+
+      error = %ExUnit.AssertionError{
+        message: "Assertion failed",
+        left: long_value,
+        right: "short",
+        expr: quote(do: long == short)
+      }
+
+      state = {:failed, [{:error, error, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      # Value should be truncated with "..." appended
+      assert String.length(failure.assertion.left) <= 10_003
+      assert String.ends_with?(failure.assertion.left, "...")
+    end
+
+    test "handles non-serializable values in assertions" do
+      pid = self()
+
+      error = %ExUnit.AssertionError{
+        message: "Assertion failed",
+        left: pid,
+        right: :expected,
+        expr: quote(do: pid == :expected)
+      }
+
+      state = {:failed, [{:error, error, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      # PID should be inspected to string
+      assert failure.assertion.left =~ ~r/#PID<[\d.]+>/
+    end
+
+    test "output is JSON-serializable" do
+      error = %ExUnit.AssertionError{
+        message: "Assertion failed",
+        left: %{nested: [1, 2, 3]},
+        right: %{nested: [4, 5, 6]},
+        expr: quote(do: left == right)
+      }
+
+      stacktrace = [
+        {MyModule, :my_function, 2, [file: ~c"test/my_test.exs", line: 42]}
+      ]
+
+      state = {:failed, [{:error, error, stacktrace}]}
+      failures = JSONEncoder.encode_failure(state)
+
+      json = JSON.encode!(failures)
+      assert is_binary(json)
+
+      decoded = JSON.decode!(json)
+      assert is_list(decoded)
+      [failure] = decoded
+      assert failure["kind"] == "assertion"
+    end
+  end
+
+  describe "encode_stacktrace/1" do
+    test "encodes stacktrace frame with full info" do
+      stacktrace = [
+        {MyModule, :my_function, 2, [file: ~c"lib/my_module.ex", line: 42]}
+      ]
+
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+
+      assert frame.module == "MyModule"
+      assert frame.function == "my_function"
+      assert frame.arity == 2
+      assert frame.file == "lib/my_module.ex"
+      assert frame.line == 42
+    end
+
+    test "handles arity as list of arguments" do
+      stacktrace = [
+        {MyModule, :my_function, [:arg1, :arg2], [file: ~c"lib/my_module.ex", line: 42]}
+      ]
+
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+      assert frame.arity == 2
+    end
+
+    test "handles invalid arity value" do
+      stacktrace = [
+        {MyModule, :my_function, "invalid", [file: ~c"lib/my_module.ex", line: 42]}
+      ]
+
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+      assert frame.arity == nil
+    end
+
+    test "handles missing file/line info" do
+      stacktrace = [
+        {MyModule, :my_function, 2, []}
+      ]
+
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+
+      assert frame.module == "MyModule"
+      assert frame.function == "my_function"
+      assert frame.file == nil
+      assert frame.line == nil
+    end
+
+    test "encodes multiple frames" do
+      stacktrace = [
+        {ModuleA, :func_a, 1, [file: ~c"a.ex", line: 10]},
+        {ModuleB, :func_b, 2, [file: ~c"b.ex", line: 20]},
+        {ModuleC, :func_c, 3, [file: ~c"c.ex", line: 30]}
+      ]
+
+      frames = JSONEncoder.encode_stacktrace(stacktrace)
+
+      assert length(frames) == 3
+      assert Enum.at(frames, 0).module == "ModuleA"
+      assert Enum.at(frames, 1).module == "ModuleB"
+      assert Enum.at(frames, 2).module == "ModuleC"
+    end
+
+    test "returns empty list for non-list input" do
+      assert JSONEncoder.encode_stacktrace(nil) == []
+      assert JSONEncoder.encode_stacktrace("invalid") == []
+    end
+
+    test "handles malformed stacktrace entry" do
+      stacktrace = [{:not, :a, :valid, :frame, :extra}]
+      [frame] = JSONEncoder.encode_stacktrace(stacktrace)
+
+      # Malformed entries return empty map with nil values for consistency
+      assert frame.module == nil
+      assert frame.function == nil
+      assert frame.arity == nil
+      assert frame.file == nil
+      assert frame.line == nil
+      assert frame.app == nil
+    end
+
+    test "output is JSON-serializable" do
+      stacktrace = [
+        {MyModule, :my_function, 2, [file: ~c"lib/my_module.ex", line: 42]}
+      ]
+
+      frames = JSONEncoder.encode_stacktrace(stacktrace)
+
+      json = JSON.encode!(frames)
+      assert is_binary(json)
+
+      decoded = JSON.decode!(json)
+      [frame] = decoded
+      assert frame["module"] == "MyModule"
+    end
+  end
+
   # Helper to build ExUnit.Test structs for testing
   defp build_test(opts \\ []) do
     name = Keyword.get(opts, :name, :"test example")

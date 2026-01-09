@@ -61,3 +61,38 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 - `mix test` passes (32 tests)
 - `mix dialyzer` passes (0 warnings)
 - `mix doctor` passes (100% coverage)
+
+---
+
+### Task 3: JSON Encoder - Failure Serialization
+
+**Completed:** 2026-01-09
+
+**What was done:**
+- Implemented `encode_failure/1` - extracts failure details from `{:failed, failures}` state
+- Implemented `encode_single_failure/1` - handles `{kind, error, stacktrace}` tuples
+- Implemented `encode_stacktrace/1` - converts stacktrace to JSON-serializable frames
+- Added assertion error handling with `left`, `right`, and `expr` extraction
+- Implemented truncation for very long assertion values (10,000 char limit)
+- Added `encode_failure_kind/2` - detects assertion errors vs error/exit/throw
+- Handles non-serializable values (PIDs, refs) via `inspect/2`
+- 21 comprehensive tests for failure serialization
+
+**Key implementation details:**
+- Truncation limits defined as module attributes at top of file
+- `@value_char_limit 10_000` for inspected values
+- `@collection_item_limit 100` for collections
+- `@printable_limit 4096` for printable strings
+- Stacktrace frames include: module, function, arity, file, line, app
+- Arity normalization handles both integer and list-of-args formats
+- All private functions have `@doc false` + explanatory comments
+
+**Files modified:**
+- `lib/ex_unit_json/json_encoder.ex` - Failure/stacktrace encoding
+- `test/ex_unit_json/json_encoder_test.exs` - 21 additional tests
+
+**Verification:**
+- `mix test` passes (53 tests)
+- `mix dialyzer` passes (0 warnings)
+- `mix format --check-formatted` passes
+- `mix credo --strict` passes (staged files)
