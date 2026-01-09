@@ -81,6 +81,19 @@ mix test.json --failures-only --output failures.json
 
 All standard `mix test` options are also supported (file paths, line numbers, etc.).
 
+### Using with jq
+
+`--summary-only` pipes cleanly to jq. For full test output, use `--output FILE` to avoid issues with large output or compilation warnings mixing with JSON:
+
+```bash
+# Summary - pipes fine
+mix test.json --quiet --summary-only | jq '.summary'
+
+# Full test details - use file to avoid parse errors
+mix test.json --quiet --output /tmp/results.json
+jq '.tests[] | select(.state == "failed")' /tmp/results.json
+```
+
 ## Output Schema v1
 
 ### Root Object

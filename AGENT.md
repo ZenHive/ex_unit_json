@@ -156,23 +156,21 @@ Quick check if failure count decreased.
 
 Note: Exit code 2 may trigger shell error display. Use `2>&1` to capture both streams.
 
-## Common jq Patterns
+## Using jq
+
+`--summary-only` pipes cleanly. For full test output, use `--output FILE` to avoid issues with large output or compilation warnings:
 
 ```bash
-# Pretty summary
+# Summary - pipes fine
 mix test.json --quiet --summary-only | jq '.summary'
-
-# Just error patterns and counts
 mix test.json --quiet --group-by-error --summary-only | jq '.error_groups | map({pattern, count})'
-
-# Top 5 error groups
 mix test.json --quiet --group-by-error --summary-only | jq '.error_groups[:5]'
 
-# Files with failures
-mix test.json --quiet --failures-only | jq '.tests[].file' | sort -u
-
-# Count failures per file
-mix test.json --quiet --failures-only | jq '.tests | group_by(.file) | map({file: .[0].file, count: length})'
+# Full test details - use file
+mix test.json --quiet --output /tmp/results.json
+jq '.tests[] | select(.state == "failed")' /tmp/results.json
+jq '.tests[].file' /tmp/results.json | sort -u
+jq '.tests | group_by(.file) | map({file: .[0].file, count: length})' /tmp/results.json
 ```
 
 ## Handling Large Output
@@ -207,13 +205,8 @@ mix test.json --seed 12345 --quiet --failures-only
 
 ## Troubleshooting
 
-### Mixed output (before --quiet existed)
-If Logger output mixes with JSON:
-```bash
-mix test.json --summary-only 2>&1 | grep -E '^\{'
-# Or
-mix test.json --summary-only 2>&1 | tail -1
-```
+### jq parse errors
+If you get `jq: parse error`, compilation warnings or other output may be mixing with JSON. See "Using jq" section above - use `--output FILE` for full test output.
 
 ### Capturing both streams
 ```bash

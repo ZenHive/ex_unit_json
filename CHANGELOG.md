@@ -4,6 +4,24 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.1.3 (2026-01-09)
+
+### Documentation
+
+#### Improved jq usage guidance
+
+**Issue:** Piping `mix test.json` directly to jq can fail with parse errors when compilation warnings or other non-JSON output appears before the JSON.
+
+**Solution:** Updated documentation to clarify:
+- `--summary-only` produces clean, minimal output that pipes safely to jq
+- For full test details, use `--output FILE` then jq the file
+
+**Files modified:**
+- `AGENT.md` - Updated "Using jq" section with safety guidance, simplified Troubleshooting
+- `README.md` - Added "Using with jq" section
+
+---
+
 ## v0.1.2 (2026-01-09)
 
 ### Bug Fixes
