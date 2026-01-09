@@ -35,6 +35,7 @@ defmodule Mix.Tasks.Test.Json do
     * `--output FILE` - Write JSON to file instead of stdout
     * `--compact` - JSONL output with minimal fields (one line per test)
     * `--group-by-error` - Group failures by similar error message
+    * `--quiet` - Suppress Logger output for cleaner JSON (sets Logger level to :error)
 
   ## Flag Precedence
 
@@ -61,12 +62,19 @@ defmodule Mix.Tasks.Test.Json do
 
   use Mix.Task
 
+  require Logger
+
   @impl Mix.Task
   def run(args) do
     ensure_test_env!()
 
     # Extract only our options, pass everything else to mix test unchanged
     {opts, test_args} = extract_json_opts(args)
+
+    # Suppress Logger output for cleaner JSON when --quiet is used
+    if Keyword.get(opts, :quiet, false) do
+      Logger.configure(level: :error)
+    end
 
     # Options passed via Application env because ExUnit formatter API
     # doesn't support passing options directly to formatters.
@@ -115,6 +123,10 @@ defmodule Mix.Tasks.Test.Json do
 
   defp extract_json_opts(["--group-by-error" | rest], opts, remaining) do
     extract_json_opts(rest, [{:group_by_error, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--quiet" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:quiet, true} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do

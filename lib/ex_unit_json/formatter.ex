@@ -84,7 +84,7 @@ defmodule ExUnitJSON.Formatter do
 
   def handle_cast({:suite_finished, times_us}, state) do
     tests = state.tests |> Enum.reverse() |> sort_tests()
-    summary = build_summary(tests, times_us)
+    summary = build_summary(tests, times_us, state.opts)
 
     output =
       if Config.compact?() do
@@ -191,13 +191,18 @@ defmodule ExUnitJSON.Formatter do
   @doc false
   # Adds error_groups to document when group_by_error is enabled and failures exist.
   # Uses pre-filtered tests to avoid calling filter_tests twice.
+  # Excludes failures matching filter_out patterns from groups.
   @spec maybe_add_error_groups(map(), [map()], [map()] | nil, keyword()) :: map()
   defp maybe_add_error_groups(doc, all_tests, filtered_tests, opts) do
     if Keyword.get(opts, :group_by_error, false) do
       # Use filtered tests if available, otherwise all tests (for summary_only mode)
       tests_for_grouping = filtered_tests || all_tests
 
-      failed_tests = Enum.filter(tests_for_grouping, &(&1.state == "failed"))
+      # Exclude tests matching filter_out patterns from groups
+      patterns = Keyword.get(opts, :filter_out, [])
+      unfiltered_tests = Filters.reject_filtered_failures(tests_for_grouping, patterns)
+
+      failed_tests = Enum.filter(unfiltered_tests, &(&1.state == "failed"))
       groups = ErrorGroups.build_error_groups(failed_tests)
 
       if groups == [], do: doc, else: Map.put(doc, :error_groups, groups)
@@ -225,26 +230,38 @@ defmodule ExUnitJSON.Formatter do
   @doc false
   # Builds summary statistics from all tests.
   # Handles both old ExUnit format (%{async, sync}) and new format (%{async, run, load}).
-  @spec build_summary([map()], map()) :: map()
-  defp build_summary(tests, times_us) do
+  # Includes filtered count when filter_out patterns match failures.
+  @spec build_summary([map()], map(), keyword()) :: map()
+  defp build_summary(tests, times_us, opts) do
     counts =
       Enum.reduce(tests, %{passed: 0, failed: 0, skipped: 0, excluded: 0, invalid: 0}, fn test, acc ->
         increment_state_count(acc, test.state)
       end)
 
     duration_us = extract_duration(times_us)
+    filter_patterns = Keyword.get(opts, :filter_out, [])
+    filtered_count = Filters.count_filtered_failures(tests, filter_patterns)
 
-    %{
-      total: length(tests),
-      passed: counts.passed,
-      failed: counts.failed,
-      skipped: counts.skipped,
-      excluded: counts.excluded,
-      invalid: counts.invalid,
-      duration_us: duration_us,
-      result: if(counts.failed > 0 or counts.invalid > 0, do: "failed", else: "passed")
-    }
+    maybe_add_filtered_count(
+      %{
+        total: length(tests),
+        passed: counts.passed,
+        failed: counts.failed,
+        skipped: counts.skipped,
+        excluded: counts.excluded,
+        invalid: counts.invalid,
+        duration_us: duration_us,
+        result: if(counts.failed > 0 or counts.invalid > 0, do: "failed", else: "passed")
+      },
+      filtered_count
+    )
   end
+
+  @doc false
+  # Adds filtered count to summary only when non-zero (avoids noise in output).
+  @spec maybe_add_filtered_count(map(), non_neg_integer()) :: map()
+  defp maybe_add_filtered_count(summary, 0), do: summary
+  defp maybe_add_filtered_count(summary, count), do: Map.put(summary, :filtered, count)
 
   @doc false
   # Extracts total duration from ExUnit times_us map.

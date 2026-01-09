@@ -81,6 +81,71 @@ mix test.json --filter-out "credentials" --filter-out "rate limit"
 
 ---
 
+### `--quiet` Flag
+
+**Added:** 2026-01-09
+
+Suppress Logger output for cleaner JSON. Sets Logger level to `:error` before running tests.
+
+```bash
+mix test.json --quiet
+```
+
+**Use case:** When applications under test have Logger debug/info output, this prevents log noise from appearing before the JSON output.
+
+**Behavior:**
+- Sets `Logger.configure(level: :error)` before running tests
+- Only error-level logs will appear
+- JSON output remains clean and parseable
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Added `--quiet` flag parsing and Logger configuration
+
+---
+
+### `filtered` Summary Count
+
+**Added:** 2026-01-09
+
+When using `--filter-out`, the summary now includes a `filtered` count showing how many failures matched the filter patterns.
+
+**Output:**
+```json
+{
+  "summary": {
+    "total": 100,
+    "failed": 50,
+    "filtered": 40,
+    ...
+  }
+}
+```
+
+**Behavior:**
+- `filtered` only appears when `--filter-out` is used AND patterns match failures
+- Shows how many of the `failed` count were filtered out
+- Absent when no patterns provided or no matches (avoids noise)
+
+**Files modified:**
+- `lib/ex_unit_json/filters.ex` - Added `count_filtered_failures/2`
+- `lib/ex_unit_json/formatter.ex` - Updated `build_summary/3` to include filtered count
+
+---
+
+### Fix: `--filter-out` Not Filtering Error Groups
+
+**Fixed:** 2026-01-09
+
+**Issue:** When using `--filter-out` with `--group-by-error`, filtered failures still appeared in `error_groups`. Expected behavior: filtered failures should be excluded from error groups entirely.
+
+**Fix:** Added `Filters.reject_filtered_failures/2` function and updated `maybe_add_error_groups` to exclude tests matching filter_out patterns from groups.
+
+**Files modified:**
+- `lib/ex_unit_json/filters.ex` - Added `reject_filtered_failures/2`
+- `lib/ex_unit_json/formatter.ex` - Updated `maybe_add_error_groups` to apply filter_out
+
+---
+
 ### `--first-failure` Flag
 
 **Added:** 2026-01-09

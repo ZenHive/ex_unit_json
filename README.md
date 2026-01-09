@@ -9,7 +9,7 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 - Drop-in replacement for `mix test` with JSON output
 - All test states: passed, failed, skipped, excluded
 - Detailed failure information with assertion values and stacktraces
-- Filtering options: `--summary-only`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`
+- Filtering options: `--summary-only`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`
 - File output: `--output results.json`
 - Deterministic test ordering for reproducible output
 - No runtime dependencies (uses Elixir 1.18+ built-in `:json`)
@@ -69,6 +69,9 @@ mix test.json --filter-out "credentials" --filter-out "rate limit"
 # Group failures by similar error message
 mix test.json --group-by-error
 
+# Suppress Logger output for cleaner JSON
+mix test.json --quiet
+
 # Write JSON to a file instead of stdout
 mix test.json --output results.json
 
@@ -112,6 +115,7 @@ All standard `mix test` options are also supported (file paths, line numbers, et
   "skipped": 1,
   "excluded": 0,
   "invalid": 0,
+  "filtered": 0,
   "duration_us": 123456,
   "result": "failed"
 }
@@ -125,6 +129,7 @@ All standard `mix test` options are also supported (file paths, line numbers, et
 | `skipped` | integer | Tests skipped with `@tag :skip` |
 | `excluded` | integer | Tests excluded by tag filters |
 | `invalid` | integer | Tests with invalid state |
+| `filtered` | integer | Failed tests matching `--filter-out` patterns (only present when non-zero) |
 | `duration_us` | integer | Total duration in microseconds |
 | `result` | string | `"passed"` or `"failed"` |
 

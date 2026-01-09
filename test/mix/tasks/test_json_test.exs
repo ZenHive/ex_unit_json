@@ -53,6 +53,13 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
+    test "parses --quiet flag" do
+      {opts, rest} = parse_args(["--quiet"])
+
+      assert opts[:quiet] == true
+      assert rest == []
+    end
+
     test "parses single --filter-out flag" do
       {opts, rest} = parse_args(["--filter-out", "credentials"])
 
@@ -703,6 +710,10 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   defp extract_json_opts(["--group-by-error" | rest], opts, remaining) do
     extract_json_opts(rest, [{:group_by_error, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--quiet" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:quiet, true} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do

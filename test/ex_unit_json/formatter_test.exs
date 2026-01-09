@@ -983,5 +983,162 @@ defmodule ExUnitJSON.FormatterTest do
       assert String.length(group["pattern"]) == 203
       assert String.ends_with?(group["pattern"], "...")
     end
+
+    test "filter_out excludes matching failures from error_groups" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            # 2 failures with credentials error (should be filtered)
+            cred_error = %RuntimeError{message: "credentials missing"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:failed, [{:error, cred_error, []}]})})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:failed, [{:error, cred_error, []}]})})
+
+            # 1 failure with different error (should appear in groups)
+            timeout_error = %RuntimeError{message: "timeout exceeded"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t3, state: {:failed, [{:error, timeout_error, []}]})})
+
+            # 1 passed test
+            GenServer.cast(pid, {:test_finished, build_test(name: :t4, state: nil)})
+          end,
+          opts: [group_by_error: true, filter_out: ["credentials"]],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      # Only the timeout error should appear in error_groups
+      assert length(json["error_groups"]) == 1
+      [group] = json["error_groups"]
+      assert group["pattern"] == "timeout exceeded"
+      assert group["count"] == 1
+
+      # Tests array should have all 4 tests (filtered ones marked)
+      assert length(json["tests"]) == 4
+      filtered_tests = Enum.filter(json["tests"], & &1["filtered"])
+      assert length(filtered_tests) == 2
+    end
+
+    test "filter_out with multiple patterns excludes all matching from groups" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            cred_error = %RuntimeError{message: "credentials missing"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:failed, [{:error, cred_error, []}]})})
+
+            api_error = %RuntimeError{message: "API key invalid"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:failed, [{:error, api_error, []}]})})
+
+            timeout_error = %RuntimeError{message: "timeout exceeded"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t3, state: {:failed, [{:error, timeout_error, []}]})})
+          end,
+          opts: [group_by_error: true, filter_out: ["credentials", "API key"]],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      # Only the timeout error should appear in error_groups
+      assert length(json["error_groups"]) == 1
+      [group] = json["error_groups"]
+      assert group["pattern"] == "timeout exceeded"
+    end
+
+    test "filter_out removes all groups when all failures match patterns" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            cred_error = %RuntimeError{message: "credentials missing"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:failed, [{:error, cred_error, []}]})})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:failed, [{:error, cred_error, []}]})})
+          end,
+          opts: [group_by_error: true, filter_out: ["credentials"]],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      # No error_groups when all failures are filtered
+      refute Map.has_key?(json, "error_groups")
+    end
+  end
+
+  describe "filtered count in summary" do
+    test "includes filtered count when filter_out matches failures" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            cred_error = %RuntimeError{message: "credentials missing"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:failed, [{:error, cred_error, []}]})})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:failed, [{:error, cred_error, []}]})})
+
+            timeout_error = %RuntimeError{message: "timeout exceeded"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t3, state: {:failed, [{:error, timeout_error, []}]})})
+
+            GenServer.cast(pid, {:test_finished, build_test(name: :t4, state: nil)})
+          end,
+          opts: [filter_out: ["credentials"]],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      summary = json["summary"]
+      assert summary["total"] == 4
+      assert summary["failed"] == 3
+      assert summary["filtered"] == 2
+    end
+
+    test "filtered count absent when no filter_out patterns" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            error = %RuntimeError{message: "some error"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:failed, [{:error, error, []}]})})
+          end,
+          opts: [],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      refute Map.has_key?(json["summary"], "filtered")
+    end
+
+    test "filtered count absent when patterns don't match any failures" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            error = %RuntimeError{message: "timeout exceeded"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: {:failed, [{:error, error, []}]})})
+          end,
+          opts: [filter_out: ["credentials"]],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      refute Map.has_key?(json["summary"], "filtered")
+    end
+
+    test "filtered count only counts failed tests, not passed" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+
+            # Passed test (should not be counted even if name contains pattern)
+            GenServer.cast(pid, {:test_finished, build_test(name: :"test credentials work", state: nil)})
+
+            # Failed test matching pattern
+            cred_error = %RuntimeError{message: "credentials missing"}
+            GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: {:failed, [{:error, cred_error, []}]})})
+          end,
+          opts: [filter_out: ["credentials"]],
+          times_us: %{async: 0, sync: 0}
+        )
+
+      # Only 1 filtered (the failed one, not the passed one)
+      assert json["summary"]["filtered"] == 1
+    end
   end
 end

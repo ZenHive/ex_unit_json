@@ -111,4 +111,63 @@ defmodule ExUnitJSON.Filters do
   end
 
   def failure_matches_pattern?(_, _), do: false
+
+  @doc """
+  Rejects (excludes) failed tests whose failure message matches any pattern.
+
+  Unlike `apply_filter_out/2` which marks tests with `filtered: true`,
+  this function removes matching tests entirely. Used for error_groups
+  where filtered failures should not appear at all.
+
+  ## Examples
+
+      # No patterns - tests unchanged
+      reject_filtered_failures(tests, [])
+      #=> tests
+
+      # Matching failures are removed entirely
+      tests = [
+        %{state: "failed", failures: [%{message: "credentials missing"}]},
+        %{state: "failed", failures: [%{message: "timeout error"}]}
+      ]
+      reject_filtered_failures(tests, ["credentials"])
+      #=> [%{state: "failed", failures: [%{message: "timeout error"}]}]
+
+  """
+  @spec reject_filtered_failures([encoded_test()], [String.t()]) :: [encoded_test()]
+  def reject_filtered_failures(tests, []), do: tests
+
+  def reject_filtered_failures(tests, patterns) do
+    Enum.reject(tests, fn test ->
+      test.state == "failed" and failure_matches_pattern?(test, patterns)
+    end)
+  end
+
+  @doc """
+  Counts failed tests that match any filter_out pattern.
+
+  Returns 0 if no patterns provided or no matches found.
+
+  ## Examples
+
+      tests = [
+        %{state: "failed", failures: [%{message: "credentials missing"}]},
+        %{state: "failed", failures: [%{message: "timeout error"}]},
+        %{state: "passed"}
+      ]
+      count_filtered_failures(tests, ["credentials"])
+      #=> 1
+
+      count_filtered_failures(tests, [])
+      #=> 0
+
+  """
+  @spec count_filtered_failures([encoded_test()], [String.t()]) :: non_neg_integer()
+  def count_filtered_failures(_tests, []), do: 0
+
+  def count_filtered_failures(tests, patterns) do
+    Enum.count(tests, fn test ->
+      test.state == "failed" and failure_matches_pattern?(test, patterns)
+    end)
+  end
 end
