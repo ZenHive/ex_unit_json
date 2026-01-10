@@ -60,6 +60,13 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
+    test "parses --no-warn flag" do
+      {opts, rest} = parse_args(["--no-warn"])
+
+      assert opts[:no_warn] == true
+      assert rest == []
+    end
+
     test "parses single --filter-out flag" do
       {opts, rest} = parse_args(["--filter-out", "credentials"])
 
@@ -712,6 +719,118 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
   end
 
+  describe "focused_run?/1 helper" do
+    test "detects .exs file targeting" do
+      assert focused_run?(["test/foo_test.exs"])
+      assert focused_run?(["test/foo_test.exs:42"])
+      assert focused_run?(["--quiet", "test/foo_test.exs"])
+    end
+
+    test "detects directory targeting" do
+      # Create a temp directory to test File.dir? check
+      temp_dir = Path.join(System.tmp_dir!(), "test_dir_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(temp_dir)
+
+      try do
+        assert focused_run?([temp_dir])
+        assert focused_run?(["--quiet", temp_dir])
+      after
+        File.rm_rf!(temp_dir)
+      end
+    end
+
+    test "detects --only tag filtering" do
+      assert focused_run?(["--only", "integration"])
+      assert focused_run?(["--only=integration"])
+    end
+
+    test "detects --exclude tag filtering" do
+      assert focused_run?(["--exclude", "slow"])
+      assert focused_run?(["--exclude=slow"])
+    end
+
+    test "returns false for full suite run" do
+      refute focused_run?([])
+      refute focused_run?(["--quiet"])
+      refute focused_run?(["--summary-only", "--quiet"])
+    end
+  end
+
+  describe "check_failed_usage/2 enforcement" do
+    setup do
+      # Store original config
+      original_enforce = Application.get_env(:ex_unit_json, :enforce_failed)
+      on_exit(fn -> Application.put_env(:ex_unit_json, :enforce_failed, original_enforce) end)
+
+      # Create temp failures file
+      failures_file = Path.join(System.tmp_dir!(), "mix_test_failures_#{System.unique_integer([:positive])}")
+
+      on_exit(fn -> File.rm(failures_file) end)
+      {:ok, failures_file: failures_file}
+    end
+
+    test "returns :ok when no failures file exists", %{failures_file: failures_file} do
+      # Don't create the file
+      assert check_failed_usage([], [], failures_file) == :ok
+    end
+
+    test "returns :ok when failures file is empty", %{failures_file: failures_file} do
+      File.write!(failures_file, "")
+      assert check_failed_usage([], [], failures_file) == :ok
+    end
+
+    test "returns {:warn, count} when failures exist (default)", %{failures_file: failures_file} do
+      File.write!(failures_file, "test/a.exs:1\ntest/b.exs:2\ntest/c.exs:3")
+      Application.put_env(:ex_unit_json, :enforce_failed, false)
+
+      assert {:warn, 3} = check_failed_usage([], [], failures_file)
+    end
+
+    test "returns {:error, :blocked, count} when enforce_failed config is true", %{failures_file: failures_file} do
+      File.write!(failures_file, "test/a.exs:1\ntest/b.exs:2")
+      Application.put_env(:ex_unit_json, :enforce_failed, true)
+
+      assert {:error, :blocked, 2} = check_failed_usage([], [], failures_file)
+    end
+
+    test "returns :ok when --no-warn is passed", %{failures_file: failures_file} do
+      File.write!(failures_file, "test/a.exs:1")
+      assert check_failed_usage([no_warn: true], [], failures_file) == :ok
+    end
+
+    test "returns :ok when --failed is in test_args", %{failures_file: failures_file} do
+      File.write!(failures_file, "test/a.exs:1")
+      assert check_failed_usage([], ["--failed"], failures_file) == :ok
+    end
+
+    test "returns :ok when targeting specific file", %{failures_file: failures_file} do
+      File.write!(failures_file, "test/a.exs:1")
+      assert check_failed_usage([], ["test/specific_test.exs"], failures_file) == :ok
+    end
+
+    test "returns :ok when targeting directory", %{failures_file: failures_file} do
+      temp_dir = Path.join(System.tmp_dir!(), "test_target_dir_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(temp_dir)
+
+      try do
+        File.write!(failures_file, "test/a.exs:1")
+        assert check_failed_usage([], [temp_dir], failures_file) == :ok
+      after
+        File.rm_rf!(temp_dir)
+      end
+    end
+
+    test "returns :ok when using --only filter", %{failures_file: failures_file} do
+      File.write!(failures_file, "test/a.exs:1")
+      assert check_failed_usage([], ["--only", "integration"], failures_file) == :ok
+    end
+
+    test "returns :ok when using --exclude filter", %{failures_file: failures_file} do
+      File.write!(failures_file, "test/a.exs:1")
+      assert check_failed_usage([], ["--exclude", "slow"], failures_file) == :ok
+    end
+  end
+
   describe "hint helper functions" do
     # These tests duplicate the private helper functions for test isolation.
     # If the implementation changes, update both locations.
@@ -810,6 +929,34 @@ defmodule Mix.Tasks.Test.JsonTest do
     String.ends_with?(arg, ".exs") or String.contains?(arg, ".exs:")
   end
 
+  # Duplicates focused_run?/1 from Mix.Tasks.Test.Json
+  defp focused_run?(test_args) do
+    Enum.any?(test_args, fn arg ->
+      String.ends_with?(arg, ".exs") or
+        String.contains?(arg, ".exs:") or
+        File.dir?(arg) or
+        String.starts_with?(arg, "--only") or
+        String.starts_with?(arg, "--exclude")
+    end)
+  end
+
+  # Duplicates check_failed_usage/2 from Mix.Tasks.Test.Json with configurable failures file
+  defp check_failed_usage(opts, test_args, failures_file) do
+    with true <- File.exists?(failures_file),
+         count when count > 0 <- count_previous_failures(failures_file),
+         false <- "--failed" in test_args,
+         false <- focused_run?(test_args),
+         false <- Keyword.get(opts, :no_warn, false) do
+      if Application.get_env(:ex_unit_json, :enforce_failed, false) do
+        {:error, :blocked, count}
+      else
+        {:warn, count}
+      end
+    else
+      _ -> :ok
+    end
+  end
+
   defp count_previous_failures(path) do
     case File.read(path) do
       {:ok, content} -> content |> String.split("\n", trim: true) |> length()
@@ -878,6 +1025,10 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   defp extract_json_opts(["--quiet" | rest], opts, remaining) do
     extract_json_opts(rest, [{:quiet, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--no-warn" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do

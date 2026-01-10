@@ -171,6 +171,18 @@ Features added to improve AI agent usability:
 
 ### Completed
 
+#### Warn-by-Default for `--failed` Usage ✅ [D:3/B:9 → 3.0]
+When `.mix_test_failures` exists and you're running without `--failed`, automatically shows a tip suggesting focused options:
+```
+TIP: 3 previous failure(s) exist. Consider:
+  mix test.json --failed
+  mix test.json test/unit/ --failed
+  mix test.json --only integration --failed
+```
+- Warning skipped when: `--failed` used, file/dir targeted, tag filters used, `--no-warn` passed
+- Optional strict enforcement via `config :ex_unit_json, enforce_failed: true`
+- Solves AI assistant problem of forgetting `--failed` during iteration
+
 #### Smart `--failed` Hint ✅ [D:2/B:6 → 3.0]
 When `.mix_test_failures` exists and you're running without `--failed`, prints a hint to stderr suggesting `--failed` for faster iteration. Also warns if the failures file is stale (>2 hours old).
 ```

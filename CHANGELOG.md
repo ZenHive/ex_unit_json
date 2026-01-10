@@ -4,6 +4,49 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.0 (2026-01-10)
+
+### Warn-by-Default for `--failed` Usage
+
+When previous test failures exist (`.mix_test_failures`) and you're running the full test suite, a helpful tip is now shown:
+
+```
+TIP: 3 previous failure(s) exist. Consider:
+  mix test.json --failed
+  mix test.json test/unit/ --failed
+  mix test.json --only integration --failed
+(Use --no-warn to suppress this message)
+```
+
+**Why this matters:** AI assistants (Claude Code, Cursor, etc.) often forget to use `--failed` when iterating on test fixes, wasting time re-running the entire suite. This warning happens automatically - no flag needed.
+
+**Behavior:**
+- Warning shown by default when `.mix_test_failures` exists and full suite is run
+- Warning skipped when:
+  - `--failed` is already used
+  - A specific file or directory is targeted (`test/my_test.exs`, `test/unit/`)
+  - Tag filters are used (`--only`, `--exclude`)
+  - `--no-warn` flag is passed
+
+**Strict enforcement (optional):**
+```elixir
+# config/test.exs
+config :ex_unit_json, enforce_failed: true
+```
+
+With strict enforcement, running the full suite with failures will exit with an error instead of just warning.
+
+**New flag:**
+- `--no-warn` - Suppress the "use --failed" warning
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Added `check_failed_usage/2`, `focused_run?/1`, `--no-warn` flag
+- `test/mix/tasks/test_json_test.exs` - Added 17 new tests
+- `README.md` - Added "Iteration Workflow" and "Strict Enforcement" sections
+- `AGENT.md` - Updated workflow documentation
+
+---
+
 ## v0.1.3 (2026-01-09)
 
 ### Published to Hex.pm 🎉

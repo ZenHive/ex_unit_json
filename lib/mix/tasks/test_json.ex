@@ -36,6 +36,7 @@ defmodule Mix.Tasks.Test.Json do
     * `--compact` - JSONL output with minimal fields (one line per test)
     * `--group-by-error` - Group failures by similar error message
     * `--quiet` - Suppress Logger output for cleaner JSON (sets Logger level to :error)
+    * `--no-warn` - Suppress the "use --failed" warning when previous failures exist
 
   ## Flag Precedence
 
@@ -46,6 +47,29 @@ defmodule Mix.Tasks.Test.Json do
     3. `--failures-only` - Returns all failed tests
 
   For example, `--summary-only --failures-only` will omit the tests array.
+
+  ## Iteration Workflow
+
+  When previous test failures exist (`.mix_test_failures`), a tip is shown suggesting
+  to use `--failed` for faster iteration:
+
+      TIP: 3 previous failure(s) exist. Consider:
+        mix test.json --failed
+
+  This warning is skipped when:
+    * `--failed` is already used
+    * A specific file or directory is targeted
+    * `--only` or `--exclude` tag filters are used
+    * `--no-warn` flag is passed
+
+  ## Strict Enforcement
+
+  To block full test runs when failures exist (useful for AI-assisted workflows):
+
+      # config/test.exs
+      config :ex_unit_json, enforce_failed: true
+
+  This will exit with an error instead of just warning.
 
   ## Examples
 
@@ -64,12 +88,50 @@ defmodule Mix.Tasks.Test.Json do
 
   require Logger
 
+  @failures_file ".mix_test_failures"
+
   @impl Mix.Task
   def run(args) do
     ensure_test_env!()
 
     # Extract only our options, pass everything else to mix test unchanged
     {opts, test_args} = extract_json_opts(args)
+
+    # Check if user should use --failed (warn by default, block if configured)
+    case check_failed_usage(opts, test_args) do
+      {:error, :blocked, count} ->
+        other_args = Enum.join(test_args, " ")
+
+        Mix.shell().error("""
+        ERROR: Previous test run had #{count} failure(s).
+
+        Re-run only failed tests:
+          mix test.json --failed #{other_args}
+
+        Or scope to a directory/tag:
+          mix test.json test/unit/ --failed
+          mix test.json --only integration --failed
+
+        Disable enforcement in config/test.exs:
+          config :ex_unit_json, enforce_failed: false
+        """)
+
+        exit({:shutdown, 1})
+
+      {:warn, count} ->
+        other_args = Enum.join(test_args, " ")
+
+        Mix.shell().info("""
+        TIP: #{count} previous failure(s) exist. Consider:
+          mix test.json --failed #{other_args}
+          mix test.json test/unit/ --failed
+          mix test.json --only integration --failed
+        (Use --no-warn to suppress this message)
+        """)
+
+      :ok ->
+        :ok
+    end
 
     # Compute hint for JSON output (suggests --failed when appropriate)
     opts = maybe_add_hint_opt(opts, test_args)
@@ -130,6 +192,10 @@ defmodule Mix.Tasks.Test.Json do
 
   defp extract_json_opts(["--quiet" | rest], opts, remaining) do
     extract_json_opts(rest, [{:quiet, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--no-warn" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do
@@ -211,6 +277,39 @@ defmodule Mix.Tasks.Test.Json do
     case File.read(path) do
       {:ok, content} -> content |> String.split("\n", trim: true) |> length()
       {:error, _} -> 0
+    end
+  end
+
+  @doc false
+  # User is being intentional about scope - no need to warn
+  @spec focused_run?([String.t()]) :: boolean()
+  defp focused_run?(test_args) do
+    Enum.any?(test_args, fn arg ->
+      String.ends_with?(arg, ".exs") or
+        String.contains?(arg, ".exs:") or
+        File.dir?(arg) or
+        String.starts_with?(arg, "--only") or
+        String.starts_with?(arg, "--exclude")
+    end)
+  end
+
+  @doc false
+  # Checks if user should be warned/blocked about not using --failed.
+  # Returns :ok, {:warn, count}, or {:error, :blocked, count}
+  @spec check_failed_usage(keyword(), [String.t()]) :: :ok | {:warn, pos_integer()} | {:error, :blocked, pos_integer()}
+  defp check_failed_usage(opts, test_args) do
+    with true <- File.exists?(@failures_file),
+         count when count > 0 <- count_previous_failures(@failures_file),
+         false <- "--failed" in test_args,
+         false <- focused_run?(test_args),
+         false <- Keyword.get(opts, :no_warn, false) do
+      if Application.get_env(:ex_unit_json, :enforce_failed, false) do
+        {:error, :blocked, count}
+      else
+        {:warn, count}
+      end
+    else
+      _ -> :ok
     end
   end
 end

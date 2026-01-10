@@ -15,6 +15,16 @@ mix test.json --quiet --summary-only
 mix test.json --quiet --failed --first-failure
 ```
 
+**Automatic reminders:** If you forget `--failed` when failures exist, you'll see:
+```
+TIP: 3 previous failure(s) exist. Consider:
+  mix test.json --failed
+  mix test.json test/unit/ --failed
+  mix test.json --only integration --failed
+```
+
+This warning is automatic - no flag needed. It's skipped when you're already being focused (using `--failed`, targeting files/dirs, or using tag filters).
+
 **When NOT to use --failed:**
 - After changing test infrastructure, fixtures, or shared setup code
 - After adding new test files (new tests won't be in .mix_test_failures)
@@ -86,6 +96,7 @@ Returns all failed tests with full assertion data and stacktraces.
 | `--group-by-error` | Cluster failures by error message. Pattern detection. |
 | `--filter-out "X"` | Exclude failures matching pattern. Can repeat. |
 | `--output FILE` | Write to file instead of stdout. |
+| `--no-warn` | Suppress the "use --failed" warning. |
 
 ## Output Structure
 
@@ -146,6 +157,17 @@ Quick check if failure count decreased.
 - **Use `--failed` for iteration** - Much faster than running all tests
 - **`--group-by-error` reveals patterns** - 50 "connection refused" errors = 1 root cause
 - **`--filter-out` is repeatable** - Add multiple patterns to exclude
+
+## Strict Enforcement
+
+For projects where forgetting `--failed` is particularly costly, enable strict mode:
+
+```elixir
+# config/test.exs
+config :ex_unit_json, enforce_failed: true
+```
+
+This will block full test runs when failures exist, requiring `--failed` or focused runs.
 
 ## Exit Codes
 

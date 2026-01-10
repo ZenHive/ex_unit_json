@@ -75,11 +75,42 @@ mix test.json --quiet
 # Write JSON to a file instead of stdout
 mix test.json --output results.json
 
+# Suppress the "use --failed" warning
+mix test.json --no-warn
+
 # Combine options
 mix test.json --failures-only --output failures.json
 ```
 
 All standard `mix test` options are also supported (file paths, line numbers, etc.).
+
+### Iteration Workflow
+
+When previous test failures exist (`.mix_test_failures`), a helpful tip is shown:
+
+```
+TIP: 3 previous failure(s) exist. Consider:
+  mix test.json --failed
+  mix test.json test/unit/ --failed
+  mix test.json --only integration --failed
+```
+
+This warning is automatically skipped when:
+- `--failed` is already used
+- A specific file or directory is targeted
+- `--only` or `--exclude` tag filters are used
+- `--no-warn` flag is passed
+
+### Strict Enforcement
+
+For AI-assisted workflows where forgetting `--failed` wastes time, enable strict enforcement:
+
+```elixir
+# config/test.exs
+config :ex_unit_json, enforce_failed: true
+```
+
+This will exit with an error instead of just warning, forcing the use of `--failed` or focused runs.
 
 ### Using with jq
 
