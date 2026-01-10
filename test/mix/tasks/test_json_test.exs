@@ -780,31 +780,31 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
 
     test "returns {:warn, count} when failures exist (default)", %{failures_file: failures_file} do
-      File.write!(failures_file, "test/a.exs:1\ntest/b.exs:2\ntest/c.exs:3")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1", "test/b.exs:2", "test/c.exs:3"]))
       Application.put_env(:ex_unit_json, :enforce_failed, false)
 
       assert {:warn, 3} = check_failed_usage([], [], failures_file)
     end
 
     test "returns {:error, :blocked, count} when enforce_failed config is true", %{failures_file: failures_file} do
-      File.write!(failures_file, "test/a.exs:1\ntest/b.exs:2")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1", "test/b.exs:2"]))
       Application.put_env(:ex_unit_json, :enforce_failed, true)
 
       assert {:error, :blocked, 2} = check_failed_usage([], [], failures_file)
     end
 
     test "returns :ok when --no-warn is passed", %{failures_file: failures_file} do
-      File.write!(failures_file, "test/a.exs:1")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1"]))
       assert check_failed_usage([no_warn: true], [], failures_file) == :ok
     end
 
     test "returns :ok when --failed is in test_args", %{failures_file: failures_file} do
-      File.write!(failures_file, "test/a.exs:1")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1"]))
       assert check_failed_usage([], ["--failed"], failures_file) == :ok
     end
 
     test "returns :ok when targeting specific file", %{failures_file: failures_file} do
-      File.write!(failures_file, "test/a.exs:1")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1"]))
       assert check_failed_usage([], ["test/specific_test.exs"], failures_file) == :ok
     end
 
@@ -813,7 +813,7 @@ defmodule Mix.Tasks.Test.JsonTest do
       File.mkdir_p!(temp_dir)
 
       try do
-        File.write!(failures_file, "test/a.exs:1")
+        File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1"]))
         assert check_failed_usage([], [temp_dir], failures_file) == :ok
       after
         File.rm_rf!(temp_dir)
@@ -821,12 +821,12 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
 
     test "returns :ok when using --only filter", %{failures_file: failures_file} do
-      File.write!(failures_file, "test/a.exs:1")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1"]))
       assert check_failed_usage([], ["--only", "integration"], failures_file) == :ok
     end
 
     test "returns :ok when using --exclude filter", %{failures_file: failures_file} do
-      File.write!(failures_file, "test/a.exs:1")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1"]))
       assert check_failed_usage([], ["--exclude", "slow"], failures_file) == :ok
     end
   end
@@ -846,7 +846,7 @@ defmodule Mix.Tasks.Test.JsonTest do
 
     test "count_previous_failures/1 counts lines in file" do
       path = Path.join(System.tmp_dir!(), "test_failures_#{System.unique_integer([:positive])}")
-      File.write!(path, "test/a.exs:1\ntest/b.exs:2\ntest/c.exs:3")
+      File.write!(path, :erlang.term_to_binary(["test/a.exs:1", "test/b.exs:2", "test/c.exs:3"]))
 
       try do
         assert count_previous_failures(path) == 3
@@ -872,7 +872,7 @@ defmodule Mix.Tasks.Test.JsonTest do
 
     test "count_previous_failures/1 handles single line without trailing newline" do
       path = Path.join(System.tmp_dir!(), "test_failures_single_#{System.unique_integer([:positive])}")
-      File.write!(path, "test/a.exs:1")
+      File.write!(path, :erlang.term_to_binary(["test/a.exs:1"]))
 
       try do
         assert count_previous_failures(path) == 1
@@ -883,7 +883,7 @@ defmodule Mix.Tasks.Test.JsonTest do
 
     test "maybe_add_hint_opt/2 adds hint when .mix_test_failures exists" do
       failures_file = Path.join(System.tmp_dir!(), "test_hint_#{System.unique_integer([:positive])}")
-      File.write!(failures_file, "test/a.exs:1\ntest/b.exs:2")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1", "test/b.exs:2"]))
 
       try do
         opts = maybe_add_hint_opt([], [], failures_file)
@@ -896,7 +896,7 @@ defmodule Mix.Tasks.Test.JsonTest do
 
     test "maybe_add_hint_opt/2 returns unchanged opts when --failed flag present" do
       failures_file = Path.join(System.tmp_dir!(), "test_hint_failed_#{System.unique_integer([:positive])}")
-      File.write!(failures_file, "test/a.exs:1")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1"]))
 
       try do
         opts = maybe_add_hint_opt([], ["--failed"], failures_file)
@@ -908,7 +908,7 @@ defmodule Mix.Tasks.Test.JsonTest do
 
     test "maybe_add_hint_opt/2 returns unchanged opts when specific test file targeted" do
       failures_file = Path.join(System.tmp_dir!(), "test_hint_target_#{System.unique_integer([:positive])}")
-      File.write!(failures_file, "test/a.exs:1")
+      File.write!(failures_file, :erlang.term_to_binary(["test/a.exs:1"]))
 
       try do
         opts = maybe_add_hint_opt([], ["test/specific_test.exs"], failures_file)
@@ -959,8 +959,18 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   defp count_previous_failures(path) do
     case File.read(path) do
-      {:ok, content} -> content |> String.split("\n", trim: true) |> length()
-      {:error, _} -> 0
+      {:ok, content} when byte_size(content) > 0 ->
+        try do
+          content |> :erlang.binary_to_term() |> length()
+        rescue
+          ArgumentError -> 1
+        end
+
+      {:ok, _} ->
+        0
+
+      {:error, _} ->
+        0
     end
   end
 

@@ -4,6 +4,26 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.1 (2026-01-10)
+
+### Bug Fix: `enforce_failed` Now Works Correctly
+
+Fixed a bug where `enforce_failed: true` configuration had no effect because the library was looking for the failures file in the wrong location.
+
+**The problem:**
+- ExUnit writes failures to `_build/test/lib/<app>/.mix/.mix_test_failures` (Erlang term format)
+- ex_unit_json was checking `.mix_test_failures` in the project root (and treating it as text)
+
+**What's fixed:**
+- `failures_file/0` now returns the correct path matching ExUnit's location
+- `count_previous_failures/1` now correctly decodes Erlang term format using `:erlang.binary_to_term/1`
+- Both warning and enforcement modes now work as documented
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Fixed path computation and file format parsing
+
+---
+
 ## v0.2.0 (2026-01-10)
 
 ### Warn-by-Default for `--failed` Usage

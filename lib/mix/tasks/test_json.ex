@@ -50,7 +50,7 @@ defmodule Mix.Tasks.Test.Json do
 
   ## Iteration Workflow
 
-  When previous test failures exist (`.mix_test_failures`), a tip is shown suggesting
+  When previous test failures exist, a tip is shown suggesting
   to use `--failed` for faster iteration:
 
       TIP: 3 previous failure(s) exist. Consider:
@@ -87,8 +87,6 @@ defmodule Mix.Tasks.Test.Json do
   use Mix.Task
 
   require Logger
-
-  @failures_file ".mix_test_failures"
 
   @impl Mix.Task
   def run(args) do
@@ -238,11 +236,22 @@ defmodule Mix.Tasks.Test.Json do
   end
 
   @doc false
+  # Returns path to ExUnit's failures file, matching where mix test writes it.
+  # Path format: _build/#{env}/lib/#{app}/.mix/.mix_test_failures
+  @spec failures_file() :: String.t()
+  defp failures_file do
+    case Mix.Project.config()[:app] do
+      nil -> ".mix_test_failures"
+      app -> Path.join(["_build", to_string(Mix.env()), "lib", to_string(app), ".mix", ".mix_test_failures"])
+    end
+  end
+
+  @doc false
   # Adds :hint to opts when --failed would speed up iteration.
   # Returns opts unchanged when: --failed already used, specific file targeted, or no previous failures.
   @spec maybe_add_hint_opt(keyword(), [String.t()]) :: keyword()
   defp maybe_add_hint_opt(opts, test_args) do
-    failures_file = ".mix_test_failures"
+    failures_path = failures_file()
     has_failed_flag = "--failed" in test_args
     has_specific_target = Enum.any?(test_args, &test_path?/1)
 
@@ -253,11 +262,11 @@ defmodule Mix.Tasks.Test.Json do
       has_specific_target ->
         opts
 
-      not File.exists?(failures_file) ->
+      not File.exists?(failures_path) ->
         opts
 
       true ->
-        count = count_previous_failures(failures_file)
+        count = count_previous_failures(failures_path)
         hint = "#{count} test(s) failed previously. Use --failed to re-run only those."
         Keyword.put(opts, :hint, hint)
     end
@@ -271,12 +280,23 @@ defmodule Mix.Tasks.Test.Json do
   end
 
   @doc false
-  # Counts number of test identifiers in .mix_test_failures file
+  # Counts number of test identifiers in .mix_test_failures file.
+  # File is Erlang term format (list of test identifiers), not text.
   @spec count_previous_failures(String.t()) :: non_neg_integer()
   defp count_previous_failures(path) do
     case File.read(path) do
-      {:ok, content} -> content |> String.split("\n", trim: true) |> length()
-      {:error, _} -> 0
+      {:ok, content} when byte_size(content) > 0 ->
+        try do
+          content |> :erlang.binary_to_term() |> length()
+        rescue
+          ArgumentError -> 1
+        end
+
+      {:ok, _} ->
+        0
+
+      {:error, _} ->
+        0
     end
   end
 
@@ -298,8 +318,10 @@ defmodule Mix.Tasks.Test.Json do
   # Returns :ok, {:warn, count}, or {:error, :blocked, count}
   @spec check_failed_usage(keyword(), [String.t()]) :: :ok | {:warn, pos_integer()} | {:error, :blocked, pos_integer()}
   defp check_failed_usage(opts, test_args) do
-    with true <- File.exists?(@failures_file),
-         count when count > 0 <- count_previous_failures(@failures_file),
+    failures_path = failures_file()
+
+    with true <- File.exists?(failures_path),
+         count when count > 0 <- count_previous_failures(failures_path),
          false <- "--failed" in test_args,
          false <- focused_run?(test_args),
          false <- Keyword.get(opts, :no_warn, false) do
