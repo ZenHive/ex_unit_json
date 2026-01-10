@@ -33,7 +33,16 @@ defmodule ExUnitJSON.Config do
           group_by_error: boolean()
         ]
 
-  @valid_options [:summary_only, :failures_only, :first_failure, :filter_out, :output, :compact, :group_by_error, :quiet]
+  @valid_options [
+    :summary_only,
+    :failures_only,
+    :first_failure,
+    :filter_out,
+    :output,
+    :compact,
+    :group_by_error,
+    :quiet
+  ]
 
   @doc """
   Gets options from Application environment.

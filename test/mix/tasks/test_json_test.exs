@@ -870,6 +870,17 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert count_previous_failures("/nonexistent/path/to/file") == 0
     end
 
+    test "count_previous_failures/1 returns 0 for malformed binary file" do
+      path = Path.join(System.tmp_dir!(), "malformed_#{System.unique_integer([:positive])}")
+      File.write!(path, "not erlang term format")
+
+      try do
+        assert count_previous_failures(path) == 0
+      after
+        File.rm!(path)
+      end
+    end
+
     test "count_previous_failures/1 handles single line without trailing newline" do
       path = Path.join(System.tmp_dir!(), "test_failures_single_#{System.unique_integer([:positive])}")
       File.write!(path, :erlang.term_to_binary(["test/a.exs:1"]))
@@ -957,13 +968,14 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
   end
 
+  # Synced with Mix.Tasks.Test.Json.count_previous_failures/1
   defp count_previous_failures(path) do
     case File.read(path) do
       {:ok, content} when byte_size(content) > 0 ->
         try do
           content |> :erlang.binary_to_term() |> length()
         rescue
-          ArgumentError -> 1
+          _ -> 0
         end
 
       {:ok, _} ->
@@ -1083,16 +1095,17 @@ defmodule Mix.Tasks.Test.JsonTest do
   # Helper to decode JSON, handling potential compilation output prefix.
   # :json.decode/1 returns the decoded value directly (not {:ok, value}).
   defp decode_json(output) do
-    # The output may contain compilation messages before the JSON
-    # Find the last valid JSON object in the output
-    case Regex.scan(~r/\{[^{}]*"version"[^{}]*\}|\{.*"version".*\}/s, output) do
-      [] ->
-        {:error, :no_json_found}
+    # The output may contain compilation messages before the JSON.
+    # Find the last line starting with "{" (the JSON output).
+    json_line =
+      output
+      |> String.split("\n")
+      |> Enum.filter(&String.starts_with?(&1, "{"))
+      |> List.last()
 
-      matches ->
-        # Take the last match (the actual test output, not any nested test outputs)
-        json_str = matches |> List.last() |> List.first()
-        {:ok, :json.decode(json_str)}
+    case json_line do
+      nil -> {:error, :no_json_found}
+      line -> {:ok, :json.decode(line)}
     end
   rescue
     e in [ArgumentError, ErlangError] ->

@@ -4,6 +4,29 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.2 (2026-01-11)
+
+### Improvements
+
+**More defensive error handling in `count_previous_failures/1`:**
+- Changed `rescue ArgumentError` to `rescue _` to catch all potential parsing errors
+- Ensures graceful fallback to 0 when failures file is corrupted or malformed
+
+**Improved test helper `decode_json/1`:**
+- Replaced fragile regex with simpler line-based JSON extraction
+- More robust parsing of test output with compilation messages
+
+**Code quality:**
+- Fixed Credo line length issue in `@valid_options` (config.ex)
+- Added test case for malformed binary failures file
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - More defensive rescue clause
+- `lib/ex_unit_json/config.ex` - Reformatted long line
+- `test/mix/tasks/test_json_test.exs` - Improved decode_json, new test case
+
+---
+
 ## v0.2.1 (2026-01-10)
 
 ### Bug Fix: `enforce_failed` Now Works Correctly

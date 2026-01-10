@@ -289,7 +289,9 @@ defmodule Mix.Tasks.Test.Json do
         try do
           content |> :erlang.binary_to_term() |> length()
         rescue
-          ArgumentError -> 1
+          _ ->
+            Logger.debug("Could not parse failures file: #{path}")
+            0
         end
 
       {:ok, _} ->
