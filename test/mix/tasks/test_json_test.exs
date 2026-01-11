@@ -1111,4 +1111,63 @@ defmodule Mix.Tasks.Test.JsonTest do
     e in [ArgumentError, ErlangError] ->
       {:error, {:decode_failed, Exception.message(e)}}
   end
+
+  # Helper to run mix test.json in the Phoenix test app
+  defp run_mix_test_json_in_phoenix_app(args) do
+    phoenix_app_dir = Path.expand("../../../test_apps/phoenix_app", __DIR__)
+    cmd_args = ["test.json" | args]
+
+    {output, exit_code} =
+      System.cmd("mix", cmd_args,
+        cd: phoenix_app_dir,
+        stderr_to_stdout: true,
+        env: [{"MIX_ENV", "test"}]
+      )
+
+    {output, exit_code}
+  end
+
+  describe "Phoenix app integration" do
+    @describetag :phoenix_integration
+
+    @tag :phoenix_integration
+    test "outputs JSON (not CLI) in Phoenix project" do
+      # This test verifies the fix for the bug where mix test.json
+      # would output CLI format (dots) instead of JSON in Phoenix projects
+      # due to race conditions with ExUnit.configure.
+      {output, exit_code} = run_mix_test_json_in_phoenix_app(["--quiet", "--summary-only"])
+
+      assert exit_code == 0, "Expected exit code 0, got #{exit_code}. Output: #{output}"
+
+      # The key assertion: output must be valid JSON, not CLI format
+      case decode_json(output) do
+        {:ok, json} ->
+          assert json["version"] == 1
+          assert is_map(json["summary"])
+          assert json["summary"]["total"] >= 1
+
+        {:error, :no_json_found} ->
+          flunk("""
+          Expected JSON output but got CLI format!
+          This indicates the ExUnitJSON.Formatter was not properly configured.
+
+          Output:
+          #{output}
+          """)
+
+        {:error, {:decode_failed, reason}} ->
+          flunk("Failed to decode JSON: #{reason}\n\nOutput:\n#{output}")
+      end
+    end
+
+    @tag :phoenix_integration
+    test "respects --failures-only flag in Phoenix project" do
+      {output, exit_code} = run_mix_test_json_in_phoenix_app(["--quiet", "--failures-only"])
+
+      # All Phoenix app tests pass, so we expect success and empty tests array
+      assert exit_code == 0
+      assert {:ok, json} = decode_json(output)
+      assert json["tests"] == []
+    end
+  end
 end

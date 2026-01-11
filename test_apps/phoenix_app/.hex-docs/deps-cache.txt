@@ -1,0 +1,13 @@
+bandit
+dns_cluster
+esbuild
+gettext
+heroicons
+jason
+phoenix
+phoenix_html
+phoenix_live_reload
+phoenix_live_view
+tailwind
+telemetry_metrics
+telemetry_poller

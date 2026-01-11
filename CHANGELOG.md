@@ -4,6 +4,45 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.3 (2026-01-11)
+
+### Bug Fixes
+
+**Fix: JSON formatter not used in Phoenix projects**
+
+Fixed a race condition where `mix test.json` would output CLI format (dots) instead of JSON in Phoenix projects due to timing issues with `ExUnit.configure`.
+
+**Root cause:** Calling `ExUnit.configure(formatters: [...])` before delegating to `mix test` could be overwritten by stale compilation state or timing issues with `test_helper.exs` loading.
+
+**Solution:** Use `--formatter` flag instead of `ExUnit.configure`:
+```elixir
+# Before (race condition prone)
+ExUnit.configure(formatters: [ExUnitJSON.Formatter])
+Mix.Task.run("test", test_args)
+
+# After (robust)
+Mix.Task.run("test", ["--formatter", "ExUnitJSON.Formatter" | test_args])
+```
+
+**Fix: Noisy debug logs about failures file**
+
+Removed spurious `[debug] Could not parse failures file` messages that appeared on every run. The failures file format changed in Elixir 1.17+ from a list to `{version, map}` tuple.
+
+**Fix: Correctly parse new failures file format**
+
+Updated `count_previous_failures/1` to handle both:
+- New format (Elixir 1.17+): `{version, %{test_id => path}}`
+- Old format: `[test_id, ...]`
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Use `--formatter` flag, fix failures file parsing
+
+**Added:**
+- `test_apps/phoenix_app/` - Phoenix 1.8 test fixture for regression testing
+- `test/mix/tasks/test_json_test.exs` - Phoenix integration tests
+
+---
+
 ## v0.2.2 (2026-01-11)
 
 ### Improvements

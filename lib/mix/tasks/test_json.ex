@@ -144,11 +144,10 @@ defmodule Mix.Tasks.Test.Json do
     # This is acceptable as test runs are single-instance.
     Application.put_env(:ex_unit_json, :opts, opts)
 
-    # Configure ExUnit to use our JSON formatter
-    ExUnit.configure(formatters: [ExUnitJSON.Formatter])
-
-    # Delegate to the standard test task
-    Mix.Task.run("test", test_args)
+    # Use --formatter flag instead of ExUnit.configure to avoid race conditions
+    # with test_helper.exs and stale compilation issues. This is more robust
+    # as it uses mix test's native formatter handling.
+    Mix.Task.run("test", ["--formatter", "ExUnitJSON.Formatter" | test_args])
   end
 
   @doc false
@@ -284,21 +283,32 @@ defmodule Mix.Tasks.Test.Json do
   # File is Erlang term format (list of test identifiers), not text.
   @spec count_previous_failures(String.t()) :: non_neg_integer()
   defp count_previous_failures(path) do
-    case File.read(path) do
-      {:ok, content} when byte_size(content) > 0 ->
-        try do
-          content |> :erlang.binary_to_term() |> length()
-        rescue
-          _ ->
-            Logger.debug("Could not parse failures file: #{path}")
-            0
-        end
+    if File.exists?(path) do
+      case File.read(path) do
+        {:ok, content} when byte_size(content) > 0 ->
+          try do
+            case :erlang.binary_to_term(content) do
+              # New format (Elixir 1.17+): {version, %{test_id => state}}
+              {_version, failures_map} when is_map(failures_map) ->
+                map_size(failures_map)
 
-      {:ok, _} ->
-        0
+              # Old format: list of test identifiers
+              failures when is_list(failures) ->
+                length(failures)
 
-      {:error, _} ->
-        0
+              _ ->
+                0
+            end
+          rescue
+            # Malformed file - silently return 0
+            _ -> 0
+          end
+
+        _ ->
+          0
+      end
+    else
+      0
     end
   end
 
