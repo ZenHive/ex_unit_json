@@ -347,8 +347,19 @@ defmodule ExUnitJSON.JSONEncoderTest do
       state = {:failed, [{:custom_kind, "some value", []}]}
       [failure] = JSONEncoder.encode_failure(state)
 
-      assert failure.kind == "custom_kind"
+      assert failure.kind == ":custom_kind"
       assert failure.message == "\"some value\""
+    end
+
+    test "encodes tuple failure kind from linked process exit" do
+      # When a linked process exits, ExUnit reports failure kind as {:EXIT, pid}
+      pid = self()
+      state = {:failed, [{{:EXIT, pid}, :normal, []}]}
+      [failure] = JSONEncoder.encode_failure(state)
+
+      # Should use inspect/1 to safely convert tuple to string
+      assert failure.kind =~ ~r/\{:EXIT, #PID<[\d.]+>\}/
+      assert failure.message == ":normal"
     end
 
     test "handles assertion error with nil expr" do

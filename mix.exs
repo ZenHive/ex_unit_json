@@ -1,7 +1,7 @@
 defmodule ExUnitJSON.MixProject do
   use Mix.Project
 
-  @version "0.2.3"
+  @version "0.2.4"
   @source_url "https://github.com/ZenHive/ex_unit_json"
 
   def project do
@@ -71,7 +71,7 @@ defmodule ExUnitJSON.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "AGENT.md", "CHANGELOG.md"],
+      extras: ["README.md", "AGENT.md"],
       source_url: @source_url
     ]
   end

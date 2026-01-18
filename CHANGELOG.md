@@ -4,6 +4,30 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.4 (2026-01-18)
+
+### Bug Fixes
+
+**Fix: Protocol.UndefinedError for non-atom failure kinds**
+
+Fixed a crash when a test fails due to a linked process exit (e.g., WebSocket connection failure). ExUnit reports these failures with a tuple kind `{:EXIT, pid}` instead of an atom like `:error`, `:exit`, or `:throw`.
+
+**Error:**
+```
+** (Protocol.UndefinedError) protocol String.Chars not implemented for Tuple.
+Got value: {:EXIT, #PID<0.797.0>}
+```
+
+**Root cause:** `encode_failure_kind/2` used `to_string(kind)` which fails for tuples since `String.Chars` is not implemented for them.
+
+**Fix:** Changed `to_string(kind)` to `inspect(kind)` which safely handles any Elixir term.
+
+**Files modified:**
+- `lib/ex_unit_json/json_encoder.ex` - Use `inspect/1` for unknown failure kinds
+- `test/ex_unit_json/json_encoder_test.exs` - Added test for tuple failure kinds
+
+---
+
 ## v0.2.3 (2026-01-11)
 
 ### Bug Fixes

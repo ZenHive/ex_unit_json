@@ -173,7 +173,7 @@ defmodule ExUnitJSON.JSONEncoder do
   defp encode_failure_kind(:error, _error), do: "error"
   defp encode_failure_kind(:exit, _error), do: "exit"
   defp encode_failure_kind(:throw, _error), do: "throw"
-  defp encode_failure_kind(kind, _error), do: to_string(kind)
+  defp encode_failure_kind(kind, _error), do: inspect(kind)
 
   @doc false
   # Safely extracts error message
