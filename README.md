@@ -373,6 +373,68 @@ ExUnit.configure(formatters: [ExUnitJSON.Formatter])
 ExUnit.start()
 ```
 
+## Claude Code Integration
+
+### Automatic Hook Setup
+
+To enforce `mix test.json` usage in Claude Code, add this hook to your project's `.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check if this Bash command runs 'mix test' without '.json'. If it matches patterns like 'mix test', 'mix test --failed', 'mix test path/to/test.exs', etc. but does NOT use 'mix test.json', respond with: {\"decision\": \"block\", \"reason\": \"Use 'mix test.json' instead of 'mix test' for AI-friendly JSON output\"}. If the command uses 'mix test.json' or is not a mix test command, respond with: {\"decision\": \"allow\"}."
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+This hook:
+- Intercepts all Bash commands before execution
+- Blocks `mix test` commands that don't use the `.json` variant
+- Allows `mix test.json` and all non-test commands through
+
+### Alternative: Command-Based Hook
+
+For a faster, deterministic check, use a command hook with a bash script:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'read input; cmd=$(echo \"$input\" | jq -r \".tool_input.command\"); if echo \"$cmd\" | grep -qE \"^mix\\s+test(\\s|$)\" && ! echo \"$cmd\" | grep -qE \"^mix\\s+test\\.json\"; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"Use mix test.json instead of mix test\\\"}\" >&2; exit 2; fi'",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Hook Events Reference
+
+| Event | When | Use Case |
+|-------|------|----------|
+| `PreToolUse` | Before tool runs | Block `mix test`, enforce `mix test.json` |
+| `PostToolUse` | After tool runs | React to test results, trigger follow-up actions |
+| `SessionStart` | Session begins | Load project context, set environment |
+
+For comprehensive hook documentation, see the [Claude Code Hooks Guide](https://docs.anthropic.com/en/docs/claude-code/hooks).
+
 ## Requirements
 
 - Elixir 1.18+ (uses built-in `:json` module)

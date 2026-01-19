@@ -4,6 +4,38 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.5 (2026-01-20)
+
+### Bug Fixes
+
+**Fix: `mix test.json | jq` now works correctly**
+
+Fixed an issue where piping `mix test.json` output to jq would fail with parse errors when previous test failures existed.
+
+**Error:**
+```
+$ mix test.json --quiet | jq '.summary'
+jq: parse error: Invalid numeric literal at line 1, column 10
+```
+
+**Root cause:** The TIP message ("TIP: 3 previous failure(s) exist...") was written to stdout via `Mix.shell().info()`, contaminating the JSON stream.
+
+**Fix:** Changed both the TIP warning and ERROR message (for `enforce_failed` mode) to use `IO.puts(:stderr, ...)` instead of `Mix.shell()` functions. This ensures stdout contains only valid JSON.
+
+**After the fix:**
+```bash
+# Works - TIP goes to stderr, JSON to stdout
+mix test.json --quiet | jq '.summary'
+
+# TIP still visible in terminal (stderr)
+mix test.json --quiet
+```
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Route TIP and ERROR messages to stderr
+
+---
+
 ## v0.2.4 (2026-01-18)
 
 ### Bug Fixes

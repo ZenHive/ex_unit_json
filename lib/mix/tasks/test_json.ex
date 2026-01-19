@@ -100,7 +100,7 @@ defmodule Mix.Tasks.Test.Json do
       {:error, :blocked, count} ->
         other_args = Enum.join(test_args, " ")
 
-        Mix.shell().error("""
+        IO.puts(:stderr, """
         ERROR: Previous test run had #{count} failure(s).
 
         Re-run only failed tests:
@@ -119,7 +119,7 @@ defmodule Mix.Tasks.Test.Json do
       {:warn, count} ->
         other_args = Enum.join(test_args, " ")
 
-        Mix.shell().info("""
+        IO.puts(:stderr, """
         TIP: #{count} previous failure(s) exist. Consider:
           mix test.json --failed #{other_args}
           mix test.json test/unit/ --failed
