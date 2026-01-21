@@ -4,6 +4,35 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.6 (2026-01-21)
+
+### Bug Fixes
+
+**Fix: `capture_log` returns empty string when using `--quiet`**
+
+Fixed an issue where `ExUnit.CaptureLog.capture_log/2` returned empty strings when running tests with `mix test.json --quiet`.
+
+**Error:**
+```elixir
+@tag capture_log: false
+test "capture_log works" do
+  log = capture_log(fn -> Logger.info("test message") end)
+  assert log =~ "test message"  # FAILS: log is ""
+end
+```
+
+**Root cause:** The `--quiet` flag was calling `Logger.configure(level: :error)`, which sets the **global** Logger level. This filters messages *before* they reach any handler, including `capture_log`'s capture handler.
+
+**Fix:** Changed to `:logger.set_handler_config(:default, :level, :error)` instead. This sets the **console handler's** level while leaving the global level unchanged:
+- Console output is still suppressed (handler ignores messages below `:error`)
+- `capture_log` works because messages still reach its capture handler
+
+**Files modified:**
+- `lib/ex_unit_json/formatter.ex` - Use handler-level suppression
+- `lib/mix/tasks/test_json.ex` - Use handler-level suppression
+
+---
+
 ## v0.2.5 (2026-01-20)
 
 ### Bug Fixes

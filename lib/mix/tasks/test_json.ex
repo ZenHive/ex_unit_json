@@ -134,9 +134,13 @@ defmodule Mix.Tasks.Test.Json do
     # Compute hint for JSON output (suggests --failed when appropriate)
     opts = maybe_add_hint_opt(opts, test_args)
 
-    # Suppress Logger output for cleaner JSON when --quiet is used
+    # Suppress Logger output for cleaner JSON when --quiet is used.
+    # IMPORTANT: We set the handler level, not the global Logger level.
+    # This allows capture_log to still capture messages while suppressing
+    # console output. Setting Logger.configure(level: :error) would break
+    # capture_log because messages are filtered before reaching any handler.
     if Keyword.get(opts, :quiet, false) do
-      Logger.configure(level: :error)
+      :logger.set_handler_config(:default, :level, :error)
     end
 
     # Options passed via Application env because ExUnit formatter API

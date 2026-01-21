@@ -58,9 +58,13 @@ defmodule ExUnitJSON.Formatter do
     merged_opts = Keyword.merge(config_opts, opts)
 
     # Apply --quiet Logger suppression here (after app config loads)
-    # to ensure it takes effect after config/test.exs is evaluated
+    # to ensure it takes effect after config/test.exs is evaluated.
+    # IMPORTANT: We set the handler level, not the global Logger level.
+    # This allows capture_log to still capture messages while suppressing
+    # console output. Setting Logger.configure(level: :error) would break
+    # capture_log because messages are filtered before reaching any handler.
     if Keyword.get(merged_opts, :quiet, false) do
-      Logger.configure(level: :error)
+      :logger.set_handler_config(:default, :level, :error)
     end
 
     {:ok, %__MODULE__{opts: merged_opts, start_time: System.monotonic_time(:microsecond)}}
