@@ -95,6 +95,18 @@ defmodule Mix.Tasks.Test.Json do
     # Extract only our options, pass everything else to mix test unchanged
     {opts, test_args} = extract_json_opts(args)
 
+    # When --quiet is used, suppress output that would corrupt the JSON stream:
+    # - Mix shell output (compile messages) - requires MIX_QUIET=1 env var set externally
+    # - Logger output - redirect to stderr and filter to errors only
+    # Note: Mix.shell(Mix.Shell.Quiet) only helps for output AFTER this point.
+    # Compilation output happens before this code runs, so MIX_QUIET=1 must be
+    # set externally when piping (or use --output FILE instead of piping).
+    if Keyword.get(opts, :quiet, false) do
+      Mix.shell(Mix.Shell.Quiet)
+      :logger.set_handler_config(:default, :config, %{type: :standard_error})
+      :logger.set_handler_config(:default, :level, :error)
+    end
+
     # Check if user should use --failed (warn by default, block if configured)
     case check_failed_usage(opts, test_args) do
       {:error, :blocked, count} ->
@@ -133,15 +145,6 @@ defmodule Mix.Tasks.Test.Json do
 
     # Compute hint for JSON output (suggests --failed when appropriate)
     opts = maybe_add_hint_opt(opts, test_args)
-
-    # Suppress Logger output for cleaner JSON when --quiet is used.
-    # IMPORTANT: We set the handler level, not the global Logger level.
-    # This allows capture_log to still capture messages while suppressing
-    # console output. Setting Logger.configure(level: :error) would break
-    # capture_log because messages are filtered before reaching any handler.
-    if Keyword.get(opts, :quiet, false) do
-      :logger.set_handler_config(:default, :level, :error)
-    end
 
     # Options passed via Application env because ExUnit formatter API
     # doesn't support passing options directly to formatters.

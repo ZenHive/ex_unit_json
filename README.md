@@ -114,16 +114,18 @@ This will exit with an error instead of just warning, forcing the use of `--fail
 
 ### Using with jq
 
-`--summary-only` pipes cleanly to jq. For full test output, use `--output FILE` to avoid issues with large output or compilation warnings mixing with JSON:
+For piping to jq, use `MIX_QUIET=1` to suppress compilation messages that would corrupt the JSON stream:
 
 ```bash
-# Summary - pipes fine
-mix test.json --quiet --summary-only | jq '.summary'
+# Summary - pipes fine (MIX_QUIET=1 prevents compile output from breaking jq)
+MIX_QUIET=1 mix test.json --quiet --summary-only | jq '.summary'
 
-# Full test details - use file to avoid parse errors
+# Full test details - use file to avoid any piping issues
 mix test.json --quiet --output /tmp/results.json
 jq '.tests[] | select(.state == "failed")' /tmp/results.json
 ```
+
+**Why `MIX_QUIET=1`?** When code changes trigger recompilation, Mix outputs messages like "Compiling 1 file (.ex)" to stdout before the JSON. This breaks jq parsing. The `--output FILE` approach avoids this entirely.
 
 ## Output Schema v1
 

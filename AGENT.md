@@ -180,15 +180,15 @@ Note: Exit code 2 may trigger shell error display. Use `2>&1` to capture both st
 
 ## Using jq
 
-`--summary-only` pipes cleanly. For full test output, use `--output FILE` to avoid issues with large output or compilation warnings:
+For piping to jq, use `MIX_QUIET=1` to suppress compilation messages that would corrupt the JSON stream:
 
 ```bash
-# Summary - pipes fine
-mix test.json --quiet --summary-only | jq '.summary'
-mix test.json --quiet --group-by-error --summary-only | jq '.error_groups | map({pattern, count})'
-mix test.json --quiet --group-by-error --summary-only | jq '.error_groups[:5]'
+# Summary - pipes fine (MIX_QUIET=1 prevents compile output from breaking jq)
+MIX_QUIET=1 mix test.json --quiet --summary-only | jq '.summary'
+MIX_QUIET=1 mix test.json --quiet --group-by-error --summary-only | jq '.error_groups | map({pattern, count})'
+MIX_QUIET=1 mix test.json --quiet --group-by-error --summary-only | jq '.error_groups[:5]'
 
-# Full test details - use file
+# Full test details - use file (avoids piping issues entirely)
 mix test.json --quiet --output /tmp/results.json
 jq '.tests[] | select(.state == "failed")' /tmp/results.json
 jq '.tests[].file' /tmp/results.json | sort -u

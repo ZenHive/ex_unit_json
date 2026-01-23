@@ -4,6 +4,40 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.7 (2026-01-23)
+
+### Documentation
+
+**Docs: `MIX_QUIET=1` required for jq piping when compilation occurs**
+
+Updated documentation to show that `MIX_QUIET=1` must be set when piping to jq if code changes trigger recompilation.
+
+**Issue:**
+```bash
+$ mix test.json --quiet --summary-only | jq '.summary'
+jq: parse error: Invalid numeric literal at line 1, column 10
+```
+
+**Root cause:** Mix outputs compilation messages ("Compiling 1 file (.ex)", "Generated app_name app") to stdout before the JSON formatter runs. This happens because compilation occurs before the task code that sets `Mix.shell(Mix.Shell.Quiet)` can execute.
+
+**Fix:** Use `MIX_QUIET=1` environment variable which suppresses Mix output at a lower level:
+```bash
+MIX_QUIET=1 mix test.json --quiet --summary-only | jq '.summary'
+```
+
+Alternatively, use `--output FILE` which avoids piping issues entirely:
+```bash
+mix test.json --quiet --output /tmp/results.json
+jq '.summary' /tmp/results.json
+```
+
+**Files modified:**
+- `README.md` - Updated jq section with `MIX_QUIET=1`
+- `AGENT.md` - Updated jq section with `MIX_QUIET=1`
+- `lib/mix/tasks/test_json.ex` - Added comments explaining the limitation
+
+---
+
 ## v0.2.6 (2026-01-21)
 
 ### Bug Fixes
