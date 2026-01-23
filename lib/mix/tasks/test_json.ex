@@ -106,6 +106,11 @@ defmodule Mix.Tasks.Test.Json do
       :logger.remove_handler(:default)
     end
 
+    # When --quiet is used without explicit --output, auto-buffer to temp file.
+    # This ensures any stdout pollution (from test_helper.exs, deps, etc.)
+    # doesn't corrupt the JSON stream when piping to jq.
+    {opts, temp_output_path} = maybe_use_temp_output(opts)
+
     # Check if user should use --failed (warn by default, block if configured)
     case check_failed_usage(opts, test_args) do
       {:error, :blocked, count} ->
@@ -154,6 +159,11 @@ defmodule Mix.Tasks.Test.Json do
     # with test_helper.exs and stale compilation issues. This is more robust
     # as it uses mix test's native formatter handling.
     Mix.Task.run("test", ["--formatter", "ExUnitJSON.Formatter" | test_args])
+
+    # If we used temp buffering, output JSON now (after all other stdout pollution)
+    if temp_output_path do
+      output_buffered_json(temp_output_path)
+    end
   end
 
   @doc false
@@ -350,6 +360,38 @@ defmodule Mix.Tasks.Test.Json do
       end
     else
       _ -> :ok
+    end
+  end
+
+  @doc false
+  # When --quiet is used without explicit --output, auto-buffer to temp file.
+  # This ensures stdout pollution doesn't corrupt JSON when piping.
+  @spec maybe_use_temp_output(keyword()) :: {keyword(), String.t() | nil}
+  defp maybe_use_temp_output(opts) do
+    quiet? = Keyword.get(opts, :quiet, false)
+    has_output? = Keyword.has_key?(opts, :output)
+
+    if quiet? and not has_output? do
+      temp_path = Path.join(System.tmp_dir!(), "ex_unit_json_#{System.unique_integer([:positive])}.json")
+      {Keyword.put(opts, :output, temp_path), temp_path}
+    else
+      {opts, nil}
+    end
+  end
+
+  @doc false
+  # Outputs buffered JSON from temp file and cleans up.
+  @spec output_buffered_json(String.t()) :: :ok
+  defp output_buffered_json(path) do
+    case File.read(path) do
+      {:ok, content} ->
+        IO.write(content)
+        File.rm(path)
+        :ok
+
+      {:error, _} ->
+        # File might not exist if tests crashed early
+        :ok
     end
   end
 end

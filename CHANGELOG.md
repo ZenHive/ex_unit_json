@@ -4,6 +4,34 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.9 (2026-01-23)
+
+### Bug Fixes
+
+**Fix: Buffer JSON output for clean piping without `--output`**
+
+Fixed an issue where stdout pollution from `test_helper.exs` or other sources would corrupt the JSON stream when piping to jq, even with `--quiet` and `MIX_QUIET=1`.
+
+**Problem:**
+```bash
+MIX_QUIET=1 mix test.json --quiet | jq '.summary'
+# jq: parse error: Invalid numeric literal at line 2, column 1
+```
+
+This happened because some projects print to stdout in `test_helper.exs` (e.g., "✓ 3 testnet credentials registered") which appears before the JSON formatter runs.
+
+**Solution:** When `--quiet` is used WITHOUT an explicit `--output` path, automatically buffer JSON to a temp file and output it at the very end (after all other stdout pollution).
+
+**Behavior:**
+- `mix test.json --quiet` → Buffers to temp file, outputs clean JSON at end
+- `mix test.json --quiet --output FILE` → Writes to FILE (unchanged behavior)
+- `mix test.json` (no --quiet) → Direct stdout (unchanged behavior)
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Added `maybe_use_temp_output/1` and `output_buffered_json/1`
+
+---
+
 ## v0.2.8 (2026-01-23)
 
 ### Bug Fixes

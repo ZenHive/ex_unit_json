@@ -1,7 +1,7 @@
 defmodule ExUnitJSON.MixProject do
   use Mix.Project
 
-  @version "0.2.8"
+  @version "0.2.9"
   @source_url "https://github.com/ZenHive/ex_unit_json"
 
   def project do
