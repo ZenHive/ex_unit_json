@@ -38,6 +38,19 @@ end
 
 ## Usage
 
+### Recommended Workflow
+
+```bash
+# First run - see failures directly (no wasteful summary-only step)
+mix test.json --quiet --failures-only
+
+# Iterate on failures (fast - only runs previously failed tests)
+mix test.json --quiet --failed --first-failure
+
+# Verify all failures fixed
+mix test.json --quiet --failed --summary-only
+```
+
 ### Basic Usage
 
 ```bash
@@ -54,32 +67,32 @@ mix test.json test/my_test.exs:42
 ### Options
 
 ```bash
-# Output only the summary (no individual test results)
-mix test.json --summary-only
+# Output only failed tests (RECOMMENDED for first run)
+mix test.json --quiet --failures-only
 
-# Output only failed tests
-mix test.json --failures-only
+# Output only the summary (no individual test results)
+mix test.json --quiet --summary-only
 
 # Output only the first failed test (quick iteration)
-mix test.json --first-failure
+mix test.json --quiet --first-failure
 
 # Mark failures matching pattern as filtered (can repeat)
-mix test.json --filter-out "credentials" --filter-out "rate limit"
+mix test.json --quiet --filter-out "credentials" --filter-out "rate limit"
 
 # Group failures by similar error message
-mix test.json --group-by-error
+mix test.json --quiet --group-by-error
 
 # Suppress Logger output for cleaner JSON
 mix test.json --quiet
 
 # Write JSON to a file instead of stdout
-mix test.json --output results.json
+mix test.json --quiet --output results.json
 
 # Suppress the "use --failed" warning
-mix test.json --no-warn
+mix test.json --quiet --no-warn
 
 # Combine options
-mix test.json --failures-only --output failures.json
+mix test.json --quiet --failures-only --output failures.json
 ```
 
 All standard `mix test` options are also supported (file paths, line numbers, etc.).

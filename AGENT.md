@@ -5,13 +5,13 @@ how to use ExUnitJSON effectively.
 
 ## Start Here (Default Workflow)
 
-**Most common pattern - fast iteration on failures:**
+**Most common pattern - see failures directly, then iterate:**
 
 ```bash
-# First run or after code changes
-mix test.json --quiet --summary-only
+# First run - see failures directly (no wasteful summary-only step)
+mix test.json --quiet --failures-only
 
-# Iterating on failures (ALWAYS use --failed for speed)
+# Iterate on failures (ALWAYS use --failed for speed)
 mix test.json --quiet --failed --first-failure
 ```
 
@@ -54,35 +54,41 @@ Without this, you'll get: `"mix test" is running in the "dev" environment`
 
 ## Quick Reference
 
-### Fast iteration on failures
+### First run - see failures directly (DEFAULT)
 ```bash
-mix test.json --failed --quiet --first-failure
+mix test.json --quiet --failures-only
 ```
-Returns only the first failure with clean JSON. Fix it, repeat.
+Runs all tests, returns only failures with full details. No wasteful summary step.
 
-### Overview of test health
+### Iterate on failures (fast)
 ```bash
-mix test.json --quiet --summary-only
+mix test.json --quiet --failed --first-failure
 ```
-Returns just counts: total, passed, failed, skipped.
+Only runs previously failed tests, stops at first failure. Fix it, repeat.
 
-### Analyze failure patterns
+### Verify all failures fixed
 ```bash
-mix test.json --failed --quiet --group-by-error --summary-only
+mix test.json --quiet --failed --summary-only
+```
+Quick check if failure count decreased after fixes.
+
+### Analyze failure patterns (large suites)
+```bash
+mix test.json --quiet --group-by-error --summary-only
 ```
 Groups failures by error message. Shows which errors are most common.
 
 ### Filter known issues
 ```bash
-mix test.json --quiet --group-by-error --filter-out "credentials" --filter-out "rate limit"
+mix test.json --quiet --failures-only --filter-out "credentials" --filter-out "rate limit"
 ```
 Excludes failures matching patterns. "filtered" count shows how many were excluded.
 
-### Full failure details
+### Full suite health check
 ```bash
-mix test.json --failed --quiet --failures-only
+mix test.json --quiet --summary-only
 ```
-Returns all failed tests with full assertion data and stacktraces.
+Returns just counts: total, passed, failed, skipped. Use when you need total counts.
 
 ## Key Flags
 
@@ -127,27 +133,33 @@ Notes:
 
 ## Recommended Workflows
 
-### 1. Initial assessment
+### 1. First run - see failures directly
 ```bash
-mix test.json --quiet --group-by-error --summary-only
+mix test.json --quiet --failures-only
 ```
-See how many failures and what patterns exist.
+Runs all tests, shows only failures. No wasteful summary-only step.
 
 ### 2. Filter noise, see real issues
 ```bash
-mix test.json --quiet --group-by-error --filter-out "credentials" --summary-only
+mix test.json --quiet --failures-only --filter-out "credentials" --filter-out "rate limit"
 ```
 Remove expected failures (missing credentials, rate limits, etc.)
 
-### 3. Fix one at a time
+### 3. Analyze failure patterns (large suites)
 ```bash
-mix test.json --failed --quiet --first-failure
+mix test.json --quiet --group-by-error --summary-only
+```
+Groups failures by error message. Use when you have many failures.
+
+### 4. Fix one at a time
+```bash
+mix test.json --quiet --failed --first-failure
 ```
 Get the first failure, fix it, repeat until green.
 
-### 4. Verify fix
+### 5. Verify fix
 ```bash
-mix test.json --failed --quiet --summary-only
+mix test.json --quiet --failed --summary-only
 ```
 Quick check if failure count decreased.
 

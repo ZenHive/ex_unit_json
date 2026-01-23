@@ -4,6 +4,28 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.14 (2026-01-23)
+
+### Documentation
+
+**Docs: Recommend `--failures-only` as default first run instead of `--summary-only`**
+
+Changed the recommended workflow to eliminate a wasteful roundtrip. Previously, docs suggested:
+1. `mix test.json --quiet --summary-only` (run all tests, see counts)
+2. `mix test.json --quiet --failures-only` (run all tests AGAIN to see failures)
+
+Now the recommended workflow is:
+1. `mix test.json --quiet --failures-only` (run all tests, see failures directly)
+2. `mix test.json --quiet --failed --first-failure` (iterate on failures)
+
+This saves running the full test suite twice just to see what failed.
+
+**Files updated:**
+- `README.md` - Added recommended workflow section, updated examples
+- `AGENT.md` - Updated default workflow and quick reference
+
+---
+
 ## v0.2.13 (2026-01-23)
 
 ### Bug Fixes
