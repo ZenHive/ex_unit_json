@@ -4,6 +4,26 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.12 (2026-01-23)
+
+### Bug Fixes
+
+**Fix: `capture_log` now works with `--quiet` flag**
+
+Fixed a regression where tests using `ExUnit.CaptureLog.capture_log/2` would fail when running with `--quiet` because Logger messages were being filtered globally.
+
+**Root cause:** v0.2.10 used `Application.put_env(:logger, :level, :error)` to suppress Logger output from test_helper.exs, but this sets the global Logger level which filters messages before they reach ANY handler, including capture_log's handler.
+
+**Fix:** In the formatter's init (which runs after test_helper.exs but before tests), reset the global Logger level to `:debug` while keeping the handler level at `:error`. This way:
+- test_helper.exs Logger output is suppressed (global level :error during setup)
+- capture_log works in tests (global level :debug after formatter init)
+- Console output still suppressed (handler level :error)
+
+**Files modified:**
+- `lib/ex_unit_json/formatter.ex` - Reset global Logger level in init
+
+---
+
 ## v0.2.11 (2026-01-23)
 
 ### Improvements

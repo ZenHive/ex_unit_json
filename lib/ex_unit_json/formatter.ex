@@ -59,11 +59,17 @@ defmodule ExUnitJSON.Formatter do
 
     # Apply --quiet Logger suppression here (after app config loads)
     # to ensure it takes effect after config/test.exs is evaluated.
-    # IMPORTANT: We set the handler level, not the global Logger level.
-    # This allows capture_log to still capture messages while suppressing
-    # console output. Setting Logger.configure(level: :error) would break
-    # capture_log because messages are filtered before reaching any handler.
+    #
+    # The Mix task sets Application.put_env(:logger, :level, :error) to suppress
+    # Logger output from test_helper.exs. But that global level breaks capture_log
+    # in tests. Now that test_helper.exs has run, we reset the global level to :all
+    # and set only the HANDLER level to :error. This way:
+    # - Console output is suppressed (handler level :error)
+    # - capture_log works (global level :all allows messages to reach handlers)
     if Keyword.get(merged_opts, :quiet, false) do
+      # Reset global level so capture_log works in tests
+      Logger.configure(level: :debug)
+      # Suppress console output via handler level
       :logger.set_handler_config(:default, :level, :error)
     end
 
