@@ -4,6 +4,36 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.10 (2026-01-23)
+
+### Bug Fixes
+
+**Fix: `--quiet` now properly suppresses Logger output from test_helper.exs**
+
+Fixed an issue where Logger.info/debug/warning messages from test_helper.exs would still appear in stdout even with `--quiet`, breaking jq piping.
+
+**Root cause:** The `:logger.remove_handler(:default)` call in the Mix task was being undone when the test environment loaded and restarted the :logger application.
+
+**Fix:** In addition to removing the handler, also set `Application.put_env(:logger, :level, :error)` before running tests. When the :logger app restarts during test setup, it initializes with `:error` level, suppressing info/debug/warning messages.
+
+**Behavior:**
+- `--quiet` now suppresses ALL Logger output (info, debug, warning) from test_helper.exs and test files
+- Logger.error messages still appear (appropriate for actual errors)
+- Without `--quiet`, Logger output works normally
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Add `Application.put_env(:logger, :level, :error)` when `--quiet` is used
+
+**Added test app:**
+- `test_apps/logger_app/` - Test fixture with Logger.info in test_helper.exs for regression testing
+
+**New integration tests:**
+- `--quiet suppresses Logger output from test_helper.exs`
+- `Logger output appears without --quiet`
+- `--quiet produces clean JSON for jq piping`
+
+---
+
 ## v0.2.9 (2026-01-23)
 
 ### Bug Fixes

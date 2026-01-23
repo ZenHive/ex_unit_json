@@ -1,0 +1,5 @@
+/_build/
+/deps/
+*.beam
+*.ez
+.mix_test_failures

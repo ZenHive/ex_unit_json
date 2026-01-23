@@ -103,7 +103,11 @@ defmodule Mix.Tasks.Test.Json do
     # set externally when piping (or use --output FILE instead of piping).
     if Keyword.get(opts, :quiet, false) do
       Mix.shell(Mix.Shell.Quiet)
+      # Remove handler now (won't persist across app restart, but helps for early output)
       :logger.remove_handler(:default)
+      # Set Logger config so when :logger app restarts during test setup,
+      # it initializes with :error level (suppressing info/debug/warning)
+      Application.put_env(:logger, :level, :error)
     end
 
     # When --quiet is used without explicit --output, auto-buffer to temp file.

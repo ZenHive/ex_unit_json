@@ -1127,6 +1127,77 @@ defmodule Mix.Tasks.Test.JsonTest do
     {output, exit_code}
   end
 
+  # Helper to run mix test.json in the logger test app
+  # This app has Logger.info calls in test_helper.exs to test --quiet suppression
+  defp run_mix_test_json_in_logger_app(args) do
+    logger_app_dir = Path.expand("../../../test_apps/logger_app", __DIR__)
+    cmd_args = ["test.json" | args]
+
+    {output, exit_code} =
+      System.cmd("mix", cmd_args,
+        cd: logger_app_dir,
+        stderr_to_stdout: true,
+        env: [{"MIX_ENV", "test"}, {"MIX_QUIET", "1"}]
+      )
+
+    {output, exit_code}
+  end
+
+  describe "Logger suppression integration" do
+    @describetag :logger_integration
+
+    @tag :logger_integration
+    test "--quiet suppresses Logger output from test_helper.exs" do
+      # The logger_app has Logger.info calls in test_helper.exs
+      # With --quiet, these should NOT appear in stdout
+      {output, exit_code} = run_mix_test_json_in_logger_app(["--quiet", "--summary-only"])
+
+      assert exit_code == 0, "Expected exit code 0, got #{exit_code}. Output: #{output}"
+
+      # Logger output should NOT be present
+      refute output =~ "[info]", "Logger output should be suppressed with --quiet. Got: #{output}"
+      refute output =~ "Test setup message", "Logger message from test_helper.exs should be suppressed"
+
+      # But JSON should still be valid
+      assert {:ok, json} = decode_json(output)
+      assert json["version"] == 1
+      assert json["summary"]["passed"] == 2
+    end
+
+    @tag :logger_integration
+    test "Logger output appears without --quiet" do
+      # Without --quiet, Logger.info should still work
+      {output, exit_code} = run_mix_test_json_in_logger_app(["--summary-only"])
+
+      assert exit_code == 0
+      # Logger output SHOULD be present without --quiet
+      assert output =~ "[info]" or output =~ "Test setup message",
+             "Logger output should appear without --quiet"
+
+      # JSON should still be valid
+      assert {:ok, _json} = decode_json(output)
+    end
+
+    @tag :logger_integration
+    test "--quiet produces clean JSON for jq piping" do
+      # This test verifies the main use case: piping to jq
+      {output, exit_code} = run_mix_test_json_in_logger_app(["--quiet", "--summary-only"])
+
+      assert exit_code == 0
+
+      # Output should be ONLY valid JSON (no Logger prefix, no other lines)
+      lines = String.split(output, "\n", trim: true)
+
+      # Should have exactly one line (the JSON)
+      assert length(lines) == 1, "Expected 1 line of output, got #{length(lines)}: #{inspect(lines)}"
+
+      # That line should be valid JSON
+      json_line = List.first(lines)
+      assert String.starts_with?(json_line, "{"), "Output should start with '{': #{json_line}"
+      assert {:ok, _json} = decode_json(output)
+    end
+  end
+
   describe "Phoenix app integration" do
     @describetag :phoenix_integration
 
