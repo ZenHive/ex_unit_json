@@ -4,6 +4,28 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.8 (2026-01-23)
+
+### Bug Fixes
+
+**Fix: Logger output still corrupting JSON stream with `--quiet`**
+
+Fixed an issue where Logger messages would still go to stdout even with `--quiet`, corrupting the JSON stream when piping to jq.
+
+**Root cause:** The attempt to redirect the default logger handler to stderr using `:logger.set_handler_config(:default, :config, %{type: :standard_error})` doesn't work because the handler's output type cannot be changed after initialization.
+
+**Fix:** Remove the default handler entirely when `--quiet` is used:
+```elixir
+:logger.remove_handler(:default)
+```
+
+This completely suppresses Logger output, which is appropriate for `--quiet` mode where clean JSON output is the priority.
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Use `remove_handler` instead of `set_handler_config`
+
+---
+
 ## v0.2.7 (2026-01-23)
 
 ### Documentation

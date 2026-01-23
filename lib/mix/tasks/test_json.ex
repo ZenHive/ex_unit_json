@@ -97,14 +97,13 @@ defmodule Mix.Tasks.Test.Json do
 
     # When --quiet is used, suppress output that would corrupt the JSON stream:
     # - Mix shell output (compile messages) - requires MIX_QUIET=1 env var set externally
-    # - Logger output - redirect to stderr and filter to errors only
+    # - Logger output - remove the default handler entirely (can't redirect after init)
     # Note: Mix.shell(Mix.Shell.Quiet) only helps for output AFTER this point.
     # Compilation output happens before this code runs, so MIX_QUIET=1 must be
     # set externally when piping (or use --output FILE instead of piping).
     if Keyword.get(opts, :quiet, false) do
       Mix.shell(Mix.Shell.Quiet)
-      :logger.set_handler_config(:default, :config, %{type: :standard_error})
-      :logger.set_handler_config(:default, :level, :error)
+      :logger.remove_handler(:default)
     end
 
     # Check if user should use --failed (warn by default, block if configured)
