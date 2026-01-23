@@ -4,6 +4,16 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.13 (2026-01-23)
+
+### Bug Fixes
+
+**Fix: Use `:debug` instead of invalid `:all` Logger level**
+
+v0.2.12 used `Logger.configure(level: :all)` but `:all` is not a valid Logger level. Changed to `:debug` (the lowest valid level that allows all messages through).
+
+---
+
 ## v0.2.12 (2026-01-23)
 
 ### Bug Fixes
