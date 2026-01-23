@@ -4,6 +4,33 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.2.11 (2026-01-23)
+
+### Improvements
+
+**`--quiet` now suppresses TIP warnings for completely clean piping**
+
+When using `--quiet`, the "TIP: N previous failure(s) exist" message is now suppressed. This ensures `mix test.json --quiet | jq` works without needing `2>/dev/null`.
+
+**Before (v0.2.10):**
+```bash
+MIX_QUIET=1 mix test.json --quiet --summary-only 2>&1 | jq
+# jq: parse error (TIP message on stderr combined with stdout)
+```
+
+**After (v0.2.11):**
+```bash
+MIX_QUIET=1 mix test.json --quiet --summary-only 2>&1 | jq
+# Works! TIP is suppressed with --quiet
+```
+
+Note: The ERROR message for `enforce_failed: true` is still shown even with `--quiet` since it blocks execution entirely.
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Suppress TIP when `--quiet` is used
+
+---
+
 ## v0.2.10 (2026-01-23)
 
 ### Bug Fixes

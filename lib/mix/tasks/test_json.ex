@@ -35,7 +35,7 @@ defmodule Mix.Tasks.Test.Json do
     * `--output FILE` - Write JSON to file instead of stdout
     * `--compact` - JSONL output with minimal fields (one line per test)
     * `--group-by-error` - Group failures by similar error message
-    * `--quiet` - Suppress Logger output for cleaner JSON (sets Logger level to :error)
+    * `--quiet` - Suppress Logger output and TIP warnings for clean JSON piping
     * `--no-warn` - Suppress the "use --failed" warning when previous failures exist
 
   ## Flag Precedence
@@ -116,8 +116,12 @@ defmodule Mix.Tasks.Test.Json do
     {opts, temp_output_path} = maybe_use_temp_output(opts)
 
     # Check if user should use --failed (warn by default, block if configured)
+    # Skip warnings when --quiet is used (clean output for piping)
+    quiet? = Keyword.get(opts, :quiet, false)
+
     case check_failed_usage(opts, test_args) do
       {:error, :blocked, count} ->
+        # Always show ERROR even with --quiet since we're blocking execution
         other_args = Enum.join(test_args, " ")
 
         IO.puts(:stderr, """
@@ -136,7 +140,8 @@ defmodule Mix.Tasks.Test.Json do
 
         exit({:shutdown, 1})
 
-      {:warn, count} ->
+      {:warn, count} when not quiet? ->
+        # Only show TIP when not in quiet mode
         other_args = Enum.join(test_args, " ")
 
         IO.puts(:stderr, """
@@ -147,7 +152,7 @@ defmodule Mix.Tasks.Test.Json do
         (Use --no-warn to suppress this message)
         """)
 
-      :ok ->
+      _ ->
         :ok
     end
 
