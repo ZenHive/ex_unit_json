@@ -51,7 +51,7 @@ defmodule ExUnitJSON.Filters do
         |> Enum.filter(&(&1.state == "failed"))
         |> Enum.take(1)
 
-      Keyword.get(opts, :failures_only, false) ->
+      Keyword.get(opts, :failures_only, true) ->
         Enum.filter(tests, &(&1.state == "failed"))
 
       true ->

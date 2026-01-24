@@ -331,7 +331,9 @@ defmodule ExUnitJSON.FormatterTest do
             GenServer.cast(pid, {:test_finished, build_test_at(name: :m_test, file: "a.exs", line: 20)})
             GenServer.cast(pid, {:test_finished, build_test_at(name: :m_test, file: "a.exs", line: 10)})
           end,
-          times_us: %{async: 0, sync: 0}
+          times_us: %{async: 0, sync: 0},
+          # Use --all behavior to see all tests
+          opts: [failures_only: false]
         )
 
       names = Enum.map(json["tests"], & &1["name"])
@@ -532,9 +534,10 @@ defmodule ExUnitJSON.FormatterTest do
 
   describe "compact mode" do
     # Helper for compact output testing
-    defp run_compact_to_file(setup_fn) do
+    defp run_compact_to_file(setup_fn, extra_opts \\ []) do
       output_file = Path.join(System.tmp_dir!(), "test_#{:rand.uniform(1_000_000)}.jsonl")
-      Application.put_env(:ex_unit_json, :opts, output: output_file, compact: true)
+      base_opts = [output: output_file, compact: true]
+      Application.put_env(:ex_unit_json, :opts, Keyword.merge(base_opts, extra_opts))
       {:ok, pid} = Formatter.start_link()
 
       setup_fn.(pid)
@@ -549,11 +552,15 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "outputs one JSON object per line" do
       content =
-        run_compact_to_file(fn pid ->
-          GenServer.cast(pid, {:suite_started, seed: 1})
-          GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
-          GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: nil)})
-        end)
+        run_compact_to_file(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t2, state: nil)})
+          end,
+          # Use --all behavior to see all tests
+          failures_only: false
+        )
 
       lines = String.split(content, "\n", trim: true)
       # 2 tests + 1 summary line
@@ -567,10 +574,14 @@ defmodule ExUnitJSON.FormatterTest do
 
     test "test lines have compact keys (f, n, s)" do
       content =
-        run_compact_to_file(fn pid ->
-          GenServer.cast(pid, {:suite_started, seed: 1})
-          GenServer.cast(pid, {:test_finished, build_test(name: :"test example", state: nil)})
-        end)
+        run_compact_to_file(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :"test example", state: nil)})
+          end,
+          # Use --all behavior to see all tests
+          failures_only: false
+        )
 
       lines = String.split(content, "\n", trim: true)
       {:ok, test_line} = json_decode(hd(lines))
@@ -1002,7 +1013,8 @@ defmodule ExUnitJSON.FormatterTest do
             # 1 passed test
             GenServer.cast(pid, {:test_finished, build_test(name: :t4, state: nil)})
           end,
-          opts: [group_by_error: true, filter_out: ["credentials"]],
+          # Use --all to see all tests including passing
+          opts: [group_by_error: true, filter_out: ["credentials"], failures_only: false],
           times_us: %{async: 0, sync: 0}
         )
 

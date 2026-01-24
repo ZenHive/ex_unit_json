@@ -5,14 +5,22 @@ how to use ExUnitJSON effectively.
 
 ## Start Here (Default Workflow)
 
-**Most common pattern - see failures directly, then iterate:**
+**v0.3.0+: Default shows only failures (AI-optimized)**
 
 ```bash
-# First run - see failures directly (no wasteful summary-only step)
-mix test.json --quiet --failures-only
+# First run - see failures directly (default behavior)
+mix test.json --quiet
 
 # Iterate on failures (ALWAYS use --failed for speed)
 mix test.json --quiet --failed --first-failure
+
+# See all tests when needed
+mix test.json --quiet --all
+```
+
+When all tests pass, you get an empty tests array:
+```json
+{"version":1,"summary":{"total":50,"passed":50,"failed":0},"tests":[]}
 ```
 
 **Automatic reminders:** If you forget `--failed` when failures exist, you'll see:
@@ -56,9 +64,9 @@ Without this, you'll get: `"mix test" is running in the "dev" environment`
 
 ### First run - see failures directly (DEFAULT)
 ```bash
-mix test.json --quiet --failures-only
+mix test.json --quiet
 ```
-Runs all tests, returns only failures with full details. No wasteful summary step.
+Runs all tests, returns only failures with full details (v0.3.0+ default).
 
 ### Iterate on failures (fast)
 ```bash
@@ -72,6 +80,12 @@ mix test.json --quiet --failed --summary-only
 ```
 Quick check if failure count decreased after fixes.
 
+### See all tests (when needed)
+```bash
+mix test.json --quiet --all
+```
+Returns all tests including passing. Use when you need full test details.
+
 ### Analyze failure patterns (large suites)
 ```bash
 mix test.json --quiet --group-by-error --summary-only
@@ -80,7 +94,7 @@ Groups failures by error message. Shows which errors are most common.
 
 ### Filter known issues
 ```bash
-mix test.json --quiet --failures-only --filter-out "credentials" --filter-out "rate limit"
+mix test.json --quiet --filter-out "credentials" --filter-out "rate limit"
 ```
 Excludes failures matching patterns. "filtered" count shows how many were excluded.
 
@@ -97,7 +111,8 @@ Returns just counts: total, passed, failed, skipped. Use when you need total cou
 | `--quiet` | Always use. Suppresses Logger noise for clean JSON. |
 | `--failed` | Only re-run previously failed tests. Fast iteration. |
 | `--summary-only` | Just counts, no test details. Quick health check. |
-| `--failures-only` | Only include failed tests in output. |
+| `--all` | Include ALL tests (default shows only failures). |
+| `--failures-only` | Only include failed tests in output. (DEFAULT in v0.3.0+) |
 | `--first-failure` | Stop at first failure. Fastest iteration. |
 | `--group-by-error` | Cluster failures by error message. Pattern detection. |
 | `--filter-out "X"` | Exclude failures matching pattern. Can repeat. |
@@ -133,15 +148,15 @@ Notes:
 
 ## Recommended Workflows
 
-### 1. First run - see failures directly
+### 1. First run - see failures directly (default)
 ```bash
-mix test.json --quiet --failures-only
+mix test.json --quiet
 ```
-Runs all tests, shows only failures. No wasteful summary-only step.
+Runs all tests, shows only failures (v0.3.0+ default). No extra flags needed.
 
 ### 2. Filter noise, see real issues
 ```bash
-mix test.json --quiet --failures-only --filter-out "credentials" --filter-out "rate limit"
+mix test.json --quiet --filter-out "credentials" --filter-out "rate limit"
 ```
 Remove expected failures (missing credentials, rate limits, etc.)
 
@@ -162,6 +177,12 @@ Get the first failure, fix it, repeat until green.
 mix test.json --quiet --failed --summary-only
 ```
 Quick check if failure count decreased.
+
+### 6. See all tests (when needed)
+```bash
+mix test.json --quiet --all
+```
+Show all tests including passing. Use when investigating test coverage or structure.
 
 ## Tips
 

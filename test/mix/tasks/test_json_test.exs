@@ -25,6 +25,13 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
+    test "parses --all flag (inverse of failures_only)" do
+      {opts, rest} = parse_args(["--all"])
+
+      assert opts[:failures_only] == false
+      assert rest == []
+    end
+
     test "parses --output option with file path" do
       {opts, rest} = parse_args(["--output", "results.json"])
 
@@ -179,7 +186,7 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   describe "integration: mix test.json" do
     @tag :integration
-    test "outputs valid JSON for passing tests" do
+    test "outputs valid JSON for passing tests (default: empty tests array)" do
       # Create a temporary test file
       {test_file, cleanup} =
         create_temp_test_file("""
@@ -202,6 +209,35 @@ defmodule Mix.Tasks.Test.JsonTest do
         assert json["summary"]["passed"] == 1
         assert json["summary"]["failed"] == 0
         assert json["summary"]["result"] == "passed"
+        # Default behavior (v0.3.0+): only failures shown, so tests array is empty
+        assert json["tests"] == []
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--all shows all tests including passing" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationAllFlagTest do
+          use ExUnit.Case
+          test "passes" do
+            assert 1 == 1
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--all"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+        assert json["summary"]["total"] == 1
+        assert json["summary"]["passed"] == 1
+        # --all flag shows all tests
+        assert length(json["tests"]) == 1
+        assert hd(json["tests"])["state"] == "passed"
       after
         cleanup.()
       end
@@ -270,13 +306,15 @@ defmodule Mix.Tasks.Test.JsonTest do
       output_file = Path.join(System.tmp_dir!(), "test_output_#{System.unique_integer([:positive])}.json")
 
       try do
-        {_output, exit_code} = run_mix_test_json([test_file, "--output", output_file])
+        # Use --all to include passing tests in output
+        {_output, exit_code} = run_mix_test_json([test_file, "--all", "--output", output_file])
 
         assert exit_code == 0
         assert File.exists?(output_file)
         content = File.read!(output_file)
         assert {:ok, json} = decode_json(content)
         assert json["summary"]["passed"] == 1
+        assert length(json["tests"]) == 1
       after
         cleanup.()
         File.rm(output_file)
@@ -423,7 +461,8 @@ defmodule Mix.Tasks.Test.JsonTest do
         """)
 
       try do
-        {output, exit_code} = run_mix_test_json([test_file, "--filter-out", "credentials"])
+        # Use --all to include passing tests in output for this test
+        {output, exit_code} = run_mix_test_json([test_file, "--all", "--filter-out", "credentials"])
 
         assert exit_code != 0
         assert {:ok, json} = decode_json(output)
@@ -667,10 +706,10 @@ defmodule Mix.Tasks.Test.JsonTest do
         """)
 
       try do
-        # Without --quiet, Logger output appears
-        {_output_noisy, _} = run_mix_test_json([test_file])
+        # Without --quiet, Logger output appears (use --all to see the test)
+        {_output_noisy, _} = run_mix_test_json([test_file, "--all"])
         # With --quiet, Logger output should be suppressed
-        {output_quiet, exit_code} = run_mix_test_json([test_file, "--quiet"])
+        {output_quiet, exit_code} = run_mix_test_json([test_file, "--quiet", "--all"])
 
         assert exit_code == 0
         assert {:ok, json} = decode_json(output_quiet)
@@ -1025,6 +1064,10 @@ defmodule Mix.Tasks.Test.JsonTest do
     extract_json_opts(rest, [{:failures_only, true} | opts], remaining)
   end
 
+  defp extract_json_opts(["--all" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:failures_only, false} | opts], remaining)
+  end
+
   defp extract_json_opts(["--first-failure" | rest], opts, remaining) do
     extract_json_opts(rest, [{:first_failure, true} | opts], remaining)
   end
@@ -1232,13 +1275,25 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
 
     @tag :phoenix_integration
-    test "respects --failures-only flag in Phoenix project" do
-      {output, exit_code} = run_mix_test_json_in_phoenix_app(["--quiet", "--failures-only"])
+    test "default behavior shows only failures in Phoenix project" do
+      # v0.3.0+: Default is failures-only, so all-passing suite shows empty tests array
+      {output, exit_code} = run_mix_test_json_in_phoenix_app(["--quiet"])
 
       # All Phoenix app tests pass, so we expect success and empty tests array
       assert exit_code == 0
       assert {:ok, json} = decode_json(output)
       assert json["tests"] == []
+    end
+
+    @tag :phoenix_integration
+    test "--all shows all tests in Phoenix project" do
+      {output, exit_code} = run_mix_test_json_in_phoenix_app(["--quiet", "--all"])
+
+      # All Phoenix app tests pass, with --all we should see them
+      assert exit_code == 0
+      assert {:ok, json} = decode_json(output)
+      assert json["tests"] != []
+      assert Enum.all?(json["tests"], &(&1["state"] == "passed"))
     end
   end
 end

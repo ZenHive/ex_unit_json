@@ -94,9 +94,10 @@ defmodule ExUnitJSON.ConfigTest do
       assert Config.failures_only?() == false
     end
 
-    test "returns false when failures_only is not set" do
+    test "returns true when failures_only is not set (default)" do
       Application.put_env(:ex_unit_json, :opts, [])
-      assert Config.failures_only?() == false
+      # v0.3.0+: Default is true (AI-optimized)
+      assert Config.failures_only?() == true
     end
   end
 

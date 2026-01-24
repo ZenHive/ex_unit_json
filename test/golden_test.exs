@@ -55,7 +55,8 @@ defmodule ExUnitJSON.GoldenTest do
       {test_file, cleanup} = create_golden_test_file(:passing)
 
       try do
-        json = run_and_parse([test_file])
+        # Use --all to see passing tests (default is failures only)
+        json = run_and_parse([test_file, "--all"])
         [test | _] = json["tests"]
 
         # Required test fields
@@ -124,7 +125,8 @@ defmodule ExUnitJSON.GoldenTest do
       {test_file, cleanup} = create_golden_test_file(:passing)
 
       try do
-        json = run_and_parse([test_file])
+        # Use --all to see passing tests (default is failures only)
+        json = run_and_parse([test_file, "--all"])
 
         assert json["summary"]["passed"] == 1
         assert json["summary"]["result"] == "passed"
@@ -158,7 +160,8 @@ defmodule ExUnitJSON.GoldenTest do
       {test_file, cleanup} = create_golden_test_file(:skipped)
 
       try do
-        json = run_and_parse([test_file])
+        # Use --all to see skipped tests (default is failures only)
+        json = run_and_parse([test_file, "--all"])
 
         assert json["summary"]["skipped"] == 1
         assert json["summary"]["result"] == "passed"
@@ -199,7 +202,8 @@ defmodule ExUnitJSON.GoldenTest do
       {test_file, cleanup} = create_golden_test_file(:ordering)
 
       try do
-        json = run_and_parse([test_file])
+        # Use --all to see all tests (default is failures only)
+        json = run_and_parse([test_file, "--all"])
         names = Enum.map(json["tests"], & &1["name"])
 
         # Tests should be sorted by line number (order in file)
@@ -216,7 +220,8 @@ defmodule ExUnitJSON.GoldenTest do
       {test_file, cleanup} = create_golden_test_file(:mixed)
 
       try do
-        json = run_and_parse([test_file])
+        # Use --all to see all tests (default is failures only)
+        json = run_and_parse([test_file, "--all"])
 
         assert json["summary"]["total"] == 3
         assert json["summary"]["passed"] == 1

@@ -4,6 +4,61 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.3.0 (2026-01-24)
+
+### Breaking Changes
+
+**Default behavior now shows only failed tests (AI-optimized)**
+
+`mix test.json` now outputs only failed tests by default, equivalent to the previous `--failures-only` behavior. This is a breaking change optimized for AI agents where passing tests are noise.
+
+**Before (v0.2.x):**
+```bash
+mix test.json --quiet  # Shows ALL tests
+mix test.json --quiet --failures-only  # Shows only failures
+```
+
+**After (v0.3.0+):**
+```bash
+mix test.json --quiet  # Shows only failures (DEFAULT)
+mix test.json --quiet --all  # Shows ALL tests
+```
+
+**When all tests pass:**
+```json
+{"version":1,"summary":{"total":50,"passed":50,"failed":0},"tests":[]}
+```
+
+**Rationale:**
+- AI agents are the primary users of this library
+- Passing tests are noise - AI needs to know what's broken
+- Context is expensive and limited
+- When all pass, "0 failures" is sufficient information
+
+### New Features
+
+**`--all` flag to show all tests**
+
+Use `--all` when you need all tests in the output:
+```bash
+mix test.json --quiet --all
+```
+
+### Migration Guide
+
+If you have scripts or workflows that depend on seeing all tests:
+1. Add `--all` flag: `mix test.json --quiet --all`
+2. Or continue using `--failures-only` explicitly (still works, now the default)
+
+**Files modified:**
+- `lib/ex_unit_json/filters.ex` - Changed default from `false` to `true`
+- `lib/ex_unit_json/config.ex` - Updated `failures_only?/0` default
+- `lib/mix/tasks/test_json.ex` - Added `--all` flag, updated docs
+- `README.md`, `AGENT.md` - Updated documentation for new default
+- Tests updated for new default behavior
+
+---
+
 ## v0.2.14 (2026-01-23)
 
 ### Documentation

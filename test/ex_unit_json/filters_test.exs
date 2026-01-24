@@ -42,10 +42,19 @@ defmodule ExUnitJSON.FiltersTest do
       assert hd(result).name == "t2"
     end
 
-    test "returns all tests when no filter options" do
+    test "returns only failed tests when no filter options (default)" do
       tests = [%{state: "passed"}, %{state: "failed"}]
 
-      assert Filters.filter_tests(tests, []) == tests
+      # Default behavior (v0.3.0+): failures_only is true by default
+      result = Filters.filter_tests(tests, [])
+      assert length(result) == 1
+      assert hd(result).state == "failed"
+    end
+
+    test "returns all tests when failures_only is explicitly false" do
+      tests = [%{state: "passed"}, %{state: "failed"}]
+
+      assert Filters.filter_tests(tests, failures_only: false) == tests
     end
 
     test "summary_only takes precedence over first_failure" do

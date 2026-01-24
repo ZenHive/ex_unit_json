@@ -29,7 +29,8 @@ defmodule Mix.Tasks.Test.Json do
   All standard `mix test` options are supported, plus:
 
     * `--summary-only` - Output only the summary, omit individual test results
-    * `--failures-only` - Output only failed tests
+    * `--all` - Output all tests (default shows only failures)
+    * `--failures-only` - Output only failed tests (DEFAULT - AI-optimized)
     * `--first-failure` - Output only the first failed test (quick iteration)
     * `--filter-out PATTERN` - Mark failures matching pattern as filtered (can repeat)
     * `--output FILE` - Write JSON to file instead of stdout
@@ -38,15 +39,22 @@ defmodule Mix.Tasks.Test.Json do
     * `--quiet` - Suppress Logger output and TIP warnings for clean JSON piping
     * `--no-warn` - Suppress the "use --failed" warning when previous failures exist
 
+  ## Default Behavior (v0.3.0+)
+
+  By default, `mix test.json` outputs only failed tests (equivalent to `--failures-only`).
+  This is optimized for AI agents where passing tests are noise.
+
+  Use `--all` to include all tests in output when needed.
+
   ## Flag Precedence
 
   When multiple filtering flags are combined, they follow this priority:
 
     1. `--summary-only` - Highest priority, omits tests array entirely
     2. `--first-failure` - Returns only the first failed test
-    3. `--failures-only` - Returns all failed tests
+    3. `--failures-only` / `--all` - Filter to failures or show all tests
 
-  For example, `--summary-only --failures-only` will omit the tests array.
+  For example, `--summary-only --all` will omit the tests array.
 
   ## Iteration Workflow
 
@@ -190,6 +198,10 @@ defmodule Mix.Tasks.Test.Json do
 
   defp extract_json_opts(["--failures-only" | rest], opts, remaining) do
     extract_json_opts(rest, [{:failures_only, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--all" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:failures_only, false} | opts], remaining)
   end
 
   defp extract_json_opts(["--first-failure" | rest], opts, remaining) do

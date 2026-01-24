@@ -96,10 +96,12 @@ defmodule ExUnitJSON.Config do
 
   @doc """
   Checks if failures-only mode is enabled.
+
+  Returns true by default (AI-optimized output). Use `--all` flag to get all tests.
   """
   @spec failures_only?() :: boolean()
   def failures_only? do
-    get_opt(:failures_only, false)
+    get_opt(:failures_only, true)
   end
 
   @doc """

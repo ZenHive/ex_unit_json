@@ -7,9 +7,10 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 ## Features
 
 - Drop-in replacement for `mix test` with JSON output
+- **AI-optimized default**: Shows only failures (use `--all` for all tests)
 - All test states: passed, failed, skipped, excluded
 - Detailed failure information with assertion values and stacktraces
-- Filtering options: `--summary-only`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`
+- Filtering options: `--summary-only`, `--all`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`
 - File output: `--output results.json`
 - Deterministic test ordering for reproducible output
 - No runtime dependencies (uses Elixir 1.18+ built-in `:json`)
@@ -38,17 +39,31 @@ end
 
 ## Usage
 
+### Default Behavior (v0.3.0+)
+
+By default, `mix test.json` outputs only failed tests. This is optimized for AI agents
+where passing tests are noise. When all tests pass, you get:
+
+```json
+{"version":1,"summary":{"total":50,"passed":50,"failed":0},"tests":[]}
+```
+
+Use `--all` to include all tests when needed.
+
 ### Recommended Workflow
 
 ```bash
-# First run - see failures directly (no wasteful summary-only step)
-mix test.json --quiet --failures-only
+# First run - see failures directly (default behavior)
+mix test.json --quiet
 
 # Iterate on failures (fast - only runs previously failed tests)
 mix test.json --quiet --failed --first-failure
 
 # Verify all failures fixed
 mix test.json --quiet --failed --summary-only
+
+# See all tests (when you need passing tests too)
+mix test.json --quiet --all
 ```
 
 ### Basic Usage
@@ -67,8 +82,11 @@ mix test.json test/my_test.exs:42
 ### Options
 
 ```bash
-# Output only failed tests (RECOMMENDED for first run)
-mix test.json --quiet --failures-only
+# Default: Output only failed tests (AI-optimized)
+mix test.json --quiet
+
+# Output ALL tests (passing + failed)
+mix test.json --quiet --all
 
 # Output only the summary (no individual test results)
 mix test.json --quiet --summary-only
@@ -92,7 +110,7 @@ mix test.json --quiet --output results.json
 mix test.json --quiet --no-warn
 
 # Combine options
-mix test.json --quiet --failures-only --output failures.json
+mix test.json --quiet --all --output all_results.json
 ```
 
 All standard `mix test` options are also supported (file paths, line numbers, etc.).
