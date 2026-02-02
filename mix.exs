@@ -64,14 +64,14 @@ defmodule ExUnitJSON.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE AGENT.md)
+      files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE AGENTS.md)
     ]
   end
 
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "AGENT.md"],
+      extras: ["README.md", "AGENTS.md"],
       source_url: @source_url
     ]
   end

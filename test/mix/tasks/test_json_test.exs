@@ -149,6 +149,48 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == args
     end
 
+    test "passes through multiple --only flags unchanged" do
+      # Multiple --only flags should pass through in order for mix test to handle
+      args = ["--only", "ws_integration", "--only", "exchange_okx", "--only", "ws_public"]
+
+      {opts, rest} = parse_args(args)
+
+      # Our options are empty (--only is a mix test flag)
+      assert opts == []
+      # All args pass through in exact order
+      assert rest == ["--only", "ws_integration", "--only", "exchange_okx", "--only", "ws_public"]
+    end
+
+    test "passes through multiple --exclude flags unchanged" do
+      args = ["--exclude", "slow", "--exclude", "external", "--exclude", "integration"]
+
+      {opts, rest} = parse_args(args)
+
+      assert opts == []
+      assert rest == ["--exclude", "slow", "--exclude", "external", "--exclude", "integration"]
+    end
+
+    test "mixes our options with multiple --only flags" do
+      args = [
+        "--failures-only",
+        "--only",
+        "tag_a",
+        "--only",
+        "tag_b",
+        "--output",
+        "out.json",
+        "--only",
+        "tag_c"
+      ]
+
+      {opts, rest} = parse_args(args)
+
+      assert opts[:failures_only] == true
+      assert opts[:output] == "out.json"
+      # Mix test flags pass through unchanged and in order
+      assert rest == ["--only", "tag_a", "--only", "tag_b", "--only", "tag_c"]
+    end
+
     test "mixes our options with mix test flags" do
       args = [
         "--failures-only",
@@ -642,6 +684,49 @@ defmodule Mix.Tasks.Test.JsonTest do
         assert json["summary"]["total"] == 2
         assert json["summary"]["passed"] == 1
         assert json["summary"]["excluded"] == 1
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "multiple --only flags filter tests correctly (OR logic)" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationMultipleOnlyFlagsTest do
+          use ExUnit.Case
+
+          @tag :tag_a
+          test "tagged as tag_a" do
+            assert true
+          end
+
+          @tag :tag_b
+          test "tagged as tag_b" do
+            assert true
+          end
+
+          @tag :tag_c
+          test "tagged as tag_c" do
+            assert true
+          end
+
+          test "not tagged" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        # Use --only tag_a --only tag_b (should include tests with tag_a OR tag_b)
+        {output, exit_code} = run_mix_test_json([test_file, "--only", "tag_a", "--only", "tag_b"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+        # 4 total tests, 2 passed (tag_a and tag_b), 2 excluded (tag_c and untagged)
+        assert json["summary"]["total"] == 4
+        assert json["summary"]["passed"] == 2
+        assert json["summary"]["excluded"] == 2
       after
         cleanup.()
       end
