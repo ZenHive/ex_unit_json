@@ -1,7 +1,6 @@
 # ex_unit_json
 
-**Status:** Phase 1 Complete ✅ (Published to Hex.pm as v0.1.3)
-**Last Updated:** 2026-01-09
+**Status:** Phase 2 In Progress (Published to Hex.pm)
 
 ## Project Overview
 
@@ -38,7 +37,7 @@
 - [x] `--summary-only` flag works
 - [x] `--failures-only` flag works
 - [x] All edge cases handled (Unicode, long values, setup failures)
-- [x] Tests pass with good coverage (150 tests)
+- [x] Tests pass with good coverage
 - [x] Published to Hex.pm (v0.1.3)
 - [x] Output ordering is deterministic (file, line, name)
 
@@ -51,7 +50,7 @@
 **Acceptance Criteria:**
 - [x] All directories and stub files created
 - [x] `mix compile` succeeds
-- [x] `mix test` passes (4 tests)
+- [x] `mix test` passes
 
 ---
 
@@ -63,7 +62,7 @@
 - [x] All test states correctly encoded
 - [x] Tags properly filtered (no internal keys exposed)
 - [x] Output is JSON-serializable (no structs, PIDs, etc.)
-- [x] Tests pass (28 encoder tests)
+- [x] Tests pass
 - [x] State mapping documented: `nil → "passed"`, `{:failed, _} → "failed"`, `{:invalid, _} → "invalid"`, `{:skipped, _} → "skipped"`, `{:excluded, _} → "excluded"`
 - [x] Truncation policy: non-serializable values use `inspect/1`
 
@@ -145,7 +144,7 @@
 - [x] README complete with examples
 - [x] CHANGELOG.md created
 - [x] `mix hex.build` succeeds
-- [x] All tests pass (150 tests)
+- [x] All tests pass
 - [x] JSON Schema v1 documented and tests validate against it
 
 ---
@@ -170,6 +169,12 @@ Features added to improve AI agent usability:
 **Note:** Prioritized by ROI (Benefit/Difficulty). Higher priority = better ROI.
 
 ### Completed
+
+#### Default to Failures-Only Output ✅ [D:3/B:9 → 3.0] (v0.3.0)
+Breaking change: `mix test.json` now outputs only failed tests by default. Use `--all` to include passing tests. Optimized for AI agents where passing tests are noise.
+
+#### Code Coverage with `--cover` ✅ [D:5/B:7 → 1.4] (v0.4.0/v0.4.1)
+`--cover` enables coverage collection. JSON includes `coverage` object with total percentage, per-module coverage, and uncovered line numbers. Use `--cover-threshold N` to fail when coverage drops below N%.
 
 #### Warn-by-Default for `--failed` Usage ✅ [D:3/B:9 → 3.0]
 When `.mix_test_failures` exists and you're running without `--failed`, automatically shows a tip suggesting focused options:
