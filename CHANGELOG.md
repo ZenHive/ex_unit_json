@@ -4,6 +4,54 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.4.0 (2026-02-04)
+
+### New Features
+
+**Code Coverage (enabled by default)**
+
+`mix test.json` now includes code coverage data in the JSON output. Coverage is collected using Erlang's `:cover` module and includes:
+
+- Total coverage percentage
+- Per-module coverage with uncovered line numbers
+- Configurable module ignore list via `test_coverage: [ignore_modules: [...]]` in mix.exs
+
+```json
+{
+  "coverage": {
+    "total_percentage": 92.5,
+    "total_lines": 400,
+    "covered_lines": 370,
+    "modules": [
+      {
+        "module": "MyApp.Users",
+        "file": "lib/my_app/users.ex",
+        "percentage": 95.0,
+        "covered_lines": 38,
+        "uncovered_lines": [45, 67]
+      }
+    ]
+  }
+}
+```
+
+Use `--no-cover` to disable coverage collection for faster test runs:
+
+```bash
+mix test.json --quiet --no-cover
+```
+
+**Files added:**
+- `lib/ex_unit_json/coverage.ex` - Coverage collection module
+- `test/ex_unit_json/coverage_test.exs` - Coverage unit tests
+
+**Files modified:**
+- `lib/mix/tasks/test_json.ex` - Added `--no-cover` flag, coverage integration
+- `mix.exs` - Added `:tools` to extra_applications, test_coverage config
+- `README.md`, `AGENTS.md` - Documentation for coverage feature
+
+---
+
 ## v0.3.0 (2026-01-24)
 
 ### Breaking Changes

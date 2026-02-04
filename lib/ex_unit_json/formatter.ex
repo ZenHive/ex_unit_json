@@ -161,6 +161,8 @@ defmodule ExUnitJSON.Formatter do
     IO.write(output)
   end
 
+  # sobelow_skip ["Traversal.FileModule"]
+  # Safe: path comes from CLI --output flag, controlled by user running the command
   defp write_output(output, path) when is_binary(path) do
     case File.write(path, output) do
       :ok ->

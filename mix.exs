@@ -1,7 +1,7 @@
 defmodule ExUnitJSON.MixProject do
   use Mix.Project
 
-  @version "0.3.0"
+  @version "0.4.0"
   @source_url "https://github.com/ZenHive/ex_unit_json"
 
   def project do
@@ -22,7 +22,8 @@ defmodule ExUnitJSON.MixProject do
 
   def application do
     [
-      extra_applications: [:logger]
+      # :tools provides :cover module for coverage analysis
+      extra_applications: [:logger, :tools]
     ]
   end
 
@@ -37,11 +38,12 @@ defmodule ExUnitJSON.MixProject do
       # Dev/Test
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.0", only: :dev},
       {:styler, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:doctor, "~> 0.22.0", only: :dev}
+      {:doctor, "~> 0.22.0", only: :dev, runtime: false}
     ]
   end
 

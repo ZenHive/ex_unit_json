@@ -38,6 +38,28 @@ defmodule Mix.Tasks.Test.Json do
     * `--group-by-error` - Group failures by similar error message
     * `--quiet` - Suppress Logger output and TIP warnings for clean JSON piping
     * `--no-warn` - Suppress the "use --failed" warning when previous failures exist
+    * `--no-cover` - Disable code coverage (coverage is ON by default)
+
+  ## Coverage
+
+  Coverage is enabled by default. The JSON output includes a `coverage` key with:
+
+      "coverage": {
+        "total_percentage": 96.96,
+        "total_lines": 330,
+        "covered_lines": 320,
+        "modules": [
+          {
+            "module": "MyApp.Module",
+            "file": "lib/my_app/module.ex",
+            "percentage": 92.68,
+            "covered_lines": 38,
+            "uncovered_lines": [45, 67, 89]
+          }
+        ]
+      }
+
+  Use `--no-cover` to disable coverage collection for faster test runs.
 
   ## Default Behavior (v0.3.0+)
 
@@ -103,66 +125,19 @@ defmodule Mix.Tasks.Test.Json do
     # Extract only our options, pass everything else to mix test unchanged
     {opts, test_args} = extract_json_opts(args)
 
-    # When --quiet is used, suppress output that would corrupt the JSON stream:
-    # - Mix shell output (compile messages) - requires MIX_QUIET=1 env var set externally
-    # - Logger output - remove the default handler entirely (can't redirect after init)
-    # Note: Mix.shell(Mix.Shell.Quiet) only helps for output AFTER this point.
-    # Compilation output happens before this code runs, so MIX_QUIET=1 must be
-    # set externally when piping (or use --output FILE instead of piping).
-    if Keyword.get(opts, :quiet, false) do
-      Mix.shell(Mix.Shell.Quiet)
-      # Remove handler now (won't persist across app restart, but helps for early output)
-      :logger.remove_handler(:default)
-      # Set Logger config so when :logger app restarts during test setup,
-      # it initializes with :error level (suppressing info/debug/warning)
-      Application.put_env(:logger, :level, :error)
-    end
+    # Setup quiet mode if requested
+    maybe_enable_quiet_mode(opts)
 
-    # When --quiet is used without explicit --output, auto-buffer to temp file.
-    # This ensures any stdout pollution (from test_helper.exs, deps, etc.)
-    # doesn't corrupt the JSON stream when piping to jq.
-    {opts, temp_output_path} = maybe_use_temp_output(opts)
+    # Coverage is ON by default, disable with --no-cover
+    cover_enabled? = Keyword.get(opts, :cover, true)
+    test_args = maybe_start_coverage(test_args, cover_enabled?)
+
+    # When coverage is enabled or --quiet is used, we need to buffer output to a temp file
+    # so we can merge coverage data into the JSON before final output
+    {opts, temp_output_path} = maybe_use_temp_output_for_coverage(opts, cover_enabled?)
 
     # Check if user should use --failed (warn by default, block if configured)
-    # Skip warnings when --quiet is used (clean output for piping)
-    quiet? = Keyword.get(opts, :quiet, false)
-
-    case check_failed_usage(opts, test_args) do
-      {:error, :blocked, count} ->
-        # Always show ERROR even with --quiet since we're blocking execution
-        other_args = Enum.join(test_args, " ")
-
-        IO.puts(:stderr, """
-        ERROR: Previous test run had #{count} failure(s).
-
-        Re-run only failed tests:
-          mix test.json --failed #{other_args}
-
-        Or scope to a directory/tag:
-          mix test.json test/unit/ --failed
-          mix test.json --only integration --failed
-
-        Disable enforcement in config/test.exs:
-          config :ex_unit_json, enforce_failed: false
-        """)
-
-        exit({:shutdown, 1})
-
-      {:warn, count} when not quiet? ->
-        # Only show TIP when not in quiet mode
-        other_args = Enum.join(test_args, " ")
-
-        IO.puts(:stderr, """
-        TIP: #{count} previous failure(s) exist. Consider:
-          mix test.json --failed #{other_args}
-          mix test.json test/unit/ --failed
-          mix test.json --only integration --failed
-        (Use --no-warn to suppress this message)
-        """)
-
-      _ ->
-        :ok
-    end
+    handle_failed_usage_check(opts, test_args)
 
     # Compute hint for JSON output (suggests --failed when appropriate)
     opts = maybe_add_hint_opt(opts, test_args)
@@ -177,9 +152,30 @@ defmodule Mix.Tasks.Test.Json do
     # as it uses mix test's native formatter handling.
     Mix.Task.run("test", ["--formatter", "ExUnitJSON.Formatter" | test_args])
 
-    # If we used temp buffering, output JSON now (after all other stdout pollution)
-    if temp_output_path do
-      output_buffered_json(temp_output_path)
+    # Handle coverage and output based on configuration
+    cond do
+      # Coverage enabled with temp buffer (stdout output)
+      cover_enabled? and temp_output_path ->
+        merge_coverage_into_output(temp_output_path, opts)
+
+      # Note: We don't call Coverage.stop() here because :cover.stop()
+      # can kill processes that imported cover-compiled modules.
+      # The cover server will be cleaned up when the process exits.
+
+      # Coverage enabled with explicit --output file
+      cover_enabled? and Keyword.has_key?(opts, :output) ->
+        output_path = Keyword.get(opts, :output)
+        merge_coverage_into_file(output_path)
+
+      # Same as above - skip stop() to avoid killing the process
+
+      # Temp buffer without coverage (just output it)
+      temp_output_path ->
+        output_buffered_json(temp_output_path)
+
+      # No temp buffer, no coverage - formatter already wrote output
+      true ->
+        :ok
     end
   end
 
@@ -232,6 +228,10 @@ defmodule Mix.Tasks.Test.Json do
     extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
   end
 
+  defp extract_json_opts(["--no-cover" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:cover, false} | opts], remaining)
+  end
+
   defp extract_json_opts([arg | rest], opts, remaining) do
     extract_json_opts(rest, opts, [arg | remaining])
   end
@@ -247,6 +247,72 @@ defmodule Mix.Tasks.Test.Json do
       rest
     else
       [{:filter_out, filters} | rest]
+    end
+  end
+
+  @doc false
+  # Enables quiet mode: suppresses Mix shell and Logger output for clean JSON
+  @spec maybe_enable_quiet_mode(keyword()) :: :ok
+  defp maybe_enable_quiet_mode(opts) do
+    if Keyword.get(opts, :quiet, false) do
+      Mix.shell(Mix.Shell.Quiet)
+      :logger.remove_handler(:default)
+      Application.put_env(:logger, :level, :error)
+    end
+
+    :ok
+  end
+
+  @doc false
+  # Starts coverage instrumentation and excludes conflicting tests
+  @spec maybe_start_coverage([String.t()], boolean()) :: [String.t()]
+  defp maybe_start_coverage(test_args, true = _cover_enabled?) do
+    Application.put_env(:ex_unit_json, :coverage_active, true)
+    ExUnitJSON.Coverage.start()
+    ["--exclude", "coverage_unit" | test_args]
+  end
+
+  defp maybe_start_coverage(test_args, false = _cover_enabled?), do: test_args
+
+  @doc false
+  # Checks failed usage and shows warning/error as appropriate
+  @spec handle_failed_usage_check(keyword(), [String.t()]) :: :ok
+  defp handle_failed_usage_check(opts, test_args) do
+    quiet? = Keyword.get(opts, :quiet, false)
+
+    case check_failed_usage(opts, test_args) do
+      {:error, :blocked, count} ->
+        other_args = Enum.join(test_args, " ")
+
+        IO.puts(:stderr, """
+        ERROR: Previous test run had #{count} failure(s).
+
+        Re-run only failed tests:
+          mix test.json --failed #{other_args}
+
+        Or scope to a directory/tag:
+          mix test.json test/unit/ --failed
+          mix test.json --only integration --failed
+
+        Disable enforcement in config/test.exs:
+          config :ex_unit_json, enforce_failed: false
+        """)
+
+        exit({:shutdown, 1})
+
+      {:warn, count} when not quiet? ->
+        other_args = Enum.join(test_args, " ")
+
+        IO.puts(:stderr, """
+        TIP: #{count} previous failure(s) exist. Consider:
+          mix test.json --failed #{other_args}
+          mix test.json test/unit/ --failed
+          mix test.json --only integration --failed
+        (Use --no-warn to suppress this message)
+        """)
+
+      _ ->
+        :ok
     end
   end
 
@@ -385,14 +451,19 @@ defmodule Mix.Tasks.Test.Json do
   end
 
   @doc false
-  # When --quiet is used without explicit --output, auto-buffer to temp file.
-  # This ensures stdout pollution doesn't corrupt JSON when piping.
-  @spec maybe_use_temp_output(keyword()) :: {keyword(), String.t() | nil}
-  defp maybe_use_temp_output(opts) do
+  # When coverage is enabled or --quiet is used, buffer output to temp file.
+  # This allows merging coverage data into JSON before final output.
+  @spec maybe_use_temp_output_for_coverage(keyword(), boolean()) :: {keyword(), String.t() | nil}
+  defp maybe_use_temp_output_for_coverage(opts, cover_enabled?) do
     quiet? = Keyword.get(opts, :quiet, false)
     has_output? = Keyword.has_key?(opts, :output)
 
-    if quiet? and not has_output? do
+    # Buffer to temp file when:
+    # 1. Coverage is enabled (need to merge coverage data)
+    # 2. --quiet is used without explicit --output (avoid stdout pollution)
+    needs_temp_buffer? = (cover_enabled? and not has_output?) or (quiet? and not has_output?)
+
+    if needs_temp_buffer? do
       temp_path = Path.join(System.tmp_dir!(), "ex_unit_json_#{System.unique_integer([:positive])}.json")
       {Keyword.put(opts, :output, temp_path), temp_path}
     else
@@ -413,6 +484,74 @@ defmodule Mix.Tasks.Test.Json do
       {:error, _} ->
         # File might not exist if tests crashed early
         :ok
+    end
+  end
+
+  @doc false
+  # Merges coverage data into the JSON output and writes to final destination.
+  @spec merge_coverage_into_output(String.t(), keyword()) :: :ok
+  defp merge_coverage_into_output(temp_path, opts) do
+    ignore_modules = get_coverage_ignore_modules()
+    coverage = ExUnitJSON.Coverage.collect(ignore_modules)
+
+    case File.read(temp_path) do
+      {:ok, content} ->
+        document = :json.decode(content)
+        merged = Map.put(document, "coverage", coverage)
+        encoded = :json.encode(merged)
+
+        case Keyword.get(opts, :output) do
+          # Output was set to temp_path, write to stdout
+          ^temp_path ->
+            IO.write(encoded)
+
+          # User specified explicit output path
+          user_path when is_binary(user_path) ->
+            File.write!(user_path, encoded)
+
+          # No output specified (shouldn't happen with coverage, but handle it)
+          nil ->
+            IO.write(encoded)
+        end
+
+        File.rm(temp_path)
+        :ok
+
+      {:error, _} ->
+        # File might not exist if tests crashed early
+        :ok
+    end
+  end
+
+  @doc false
+  # Merges coverage data into an existing output file.
+  # Used when user specifies --output and coverage is enabled.
+  @spec merge_coverage_into_file(String.t()) :: :ok
+  defp merge_coverage_into_file(path) do
+    ignore_modules = get_coverage_ignore_modules()
+    coverage = ExUnitJSON.Coverage.collect(ignore_modules)
+
+    case File.read(path) do
+      {:ok, content} ->
+        document = :json.decode(content)
+        merged = Map.put(document, "coverage", coverage)
+        encoded = :json.encode(merged)
+        File.write!(path, encoded)
+        :ok
+
+      {:error, _} ->
+        # File might not exist if tests crashed early
+        :ok
+    end
+  end
+
+  @doc false
+  # Gets list of modules to ignore from mix.exs test_coverage config.
+  @spec get_coverage_ignore_modules() :: [module()]
+  defp get_coverage_ignore_modules do
+    case Mix.Project.config()[:test_coverage] do
+      nil -> []
+      config -> Keyword.get(config, :ignore_modules, [])
     end
   end
 end

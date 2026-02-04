@@ -8,6 +8,7 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 
 - Drop-in replacement for `mix test` with JSON output
 - **AI-optimized default**: Shows only failures (use `--all` for all tests)
+- **Code coverage** included by default (use `--no-cover` to disable)
 - All test states: passed, failed, skipped, excluded
 - Detailed failure information with assertion values and stacktraces
 - Filtering options: `--summary-only`, `--all`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`
@@ -109,11 +110,56 @@ mix test.json --quiet --output results.json
 # Suppress the "use --failed" warning
 mix test.json --quiet --no-warn
 
+# Disable code coverage (faster test runs)
+mix test.json --quiet --no-cover
+
 # Combine options
 mix test.json --quiet --all --output all_results.json
 ```
 
 All standard `mix test` options are also supported (file paths, line numbers, etc.).
+
+### Code Coverage
+
+Coverage is enabled by default and included in the JSON output:
+
+```json
+{
+  "coverage": {
+    "total_percentage": 92.5,
+    "total_lines": 400,
+    "covered_lines": 370,
+    "modules": [
+      {
+        "module": "MyApp.Users",
+        "file": "lib/my_app/users.ex",
+        "percentage": 95.0,
+        "covered_lines": 38,
+        "uncovered_lines": [45, 67]
+      }
+    ]
+  }
+}
+```
+
+Use `--no-cover` to disable coverage collection for faster test runs:
+
+```bash
+mix test.json --quiet --no-cover
+```
+
+Configure modules to ignore in `mix.exs`:
+
+```elixir
+def project do
+  [
+    # ...
+    test_coverage: [
+      ignore_modules: [MyApp.GeneratedModule]
+    ]
+  ]
+end
+```
 
 ### Iteration Workflow
 
@@ -181,6 +227,7 @@ jq '.tests[] | select(.state == "failed")' /tmp/results.json
 | `tests` | array | Individual test results (omitted with `--summary-only`) |
 | `error_groups` | array | Failures grouped by message (only with `--group-by-error`) |
 | `module_failures` | array | setup_all failures (only present when failures occur) |
+| `coverage` | object | Code coverage data (omitted with `--no-cover`) |
 
 ### Summary Object
 

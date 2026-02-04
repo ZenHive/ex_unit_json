@@ -74,6 +74,13 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
+    test "parses --no-cover flag" do
+      {opts, rest} = parse_args(["--no-cover"])
+
+      assert opts[:cover] == false
+      assert rest == []
+    end
+
     test "parses single --filter-out flag" do
       {opts, rest} = parse_args(["--filter-out", "credentials"])
 
@@ -1093,11 +1100,23 @@ defmodule Mix.Tasks.Test.JsonTest do
   end
 
   # Synced with Mix.Tasks.Test.Json.count_previous_failures/1
+  # Handles both old format (list) and new Elixir 1.17+ format (map)
   defp count_previous_failures(path) do
     case File.read(path) do
       {:ok, content} when byte_size(content) > 0 ->
         try do
-          content |> :erlang.binary_to_term() |> length()
+          case :erlang.binary_to_term(content) do
+            # New format (Elixir 1.17+): {version, %{test_id => state}}
+            {_version, failures_map} when is_map(failures_map) ->
+              map_size(failures_map)
+
+            # Old format: list of test identifiers
+            failures when is_list(failures) ->
+              length(failures)
+
+            _ ->
+              0
+          end
         rescue
           _ -> 0
         end
@@ -1179,6 +1198,10 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   defp extract_json_opts(["--no-warn" | rest], opts, remaining) do
     extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--no-cover" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:cover, false} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do
@@ -1379,6 +1402,183 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert {:ok, json} = decode_json(output)
       assert json["tests"] != []
       assert Enum.all?(json["tests"], &(&1["state"] == "passed"))
+    end
+  end
+
+  describe "coverage integration" do
+    @describetag :coverage_integration
+
+    @tag :coverage_integration
+    test "includes coverage by default" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverageDefaultTest do
+          use ExUnit.Case
+          test "passes" do
+            assert 1 == 1
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+
+        # Coverage should be present by default
+        assert Map.has_key?(json, "coverage"), "Expected coverage key in JSON output"
+
+        coverage = json["coverage"]
+        assert Map.has_key?(coverage, "total_percentage")
+        assert Map.has_key?(coverage, "total_lines")
+        assert Map.has_key?(coverage, "covered_lines")
+        assert Map.has_key?(coverage, "modules")
+
+        assert is_number(coverage["total_percentage"])
+        assert is_integer(coverage["total_lines"])
+        assert is_integer(coverage["covered_lines"])
+        assert is_list(coverage["modules"])
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :coverage_integration
+    test "--no-cover excludes coverage from output" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationNoCoverTest do
+          use ExUnit.Case
+          test "passes" do
+            assert 1 == 1
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet", "--no-cover"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+
+        # Coverage should NOT be present with --no-cover
+        refute Map.has_key?(json, "coverage"),
+               "Expected no coverage key with --no-cover flag"
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :coverage_integration
+    test "coverage modules have expected structure" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverageStructureTest do
+          use ExUnit.Case
+          test "passes" do
+            # Just verify the module is callable - opts may contain coverage settings
+            assert is_list(ExUnitJSON.Config.get_opts())
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+        assert Map.has_key?(json, "coverage")
+
+        coverage = json["coverage"]
+
+        # Should have modules (the project's lib/ modules)
+        assert coverage["modules"] != [], "Expected at least one module in coverage"
+
+        # Check structure of first module
+        mod = hd(coverage["modules"])
+        assert Map.has_key?(mod, "module")
+        assert Map.has_key?(mod, "file")
+        assert Map.has_key?(mod, "percentage")
+        assert Map.has_key?(mod, "covered_lines")
+        assert Map.has_key?(mod, "uncovered_lines")
+
+        # File should be relative path
+        if mod["file"] do
+          refute String.starts_with?(mod["file"], "/"),
+                 "File path should be relative: #{mod["file"]}"
+        end
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :coverage_integration
+    test "coverage works with --output flag" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverageOutputTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      output_file = Path.join(System.tmp_dir!(), "coverage_output_#{System.unique_integer([:positive])}.json")
+
+      try do
+        {_output, exit_code} = run_mix_test_json([test_file, "--output", output_file])
+
+        assert exit_code == 0
+        assert File.exists?(output_file)
+
+        content = File.read!(output_file)
+        assert {:ok, json} = decode_json(content)
+
+        # Coverage should be present in file output
+        assert Map.has_key?(json, "coverage")
+        assert is_number(json["coverage"]["total_percentage"])
+      after
+        cleanup.()
+        File.rm(output_file)
+      end
+    end
+
+    @tag :coverage_integration
+    test "coverage percentages are valid" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoveragePercentageTest do
+          use ExUnit.Case
+          test "calls some code" do
+            # This exercises some code paths
+            opts = ExUnitJSON.Config.get_opts()
+            assert is_list(opts)
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+
+        coverage = json["coverage"]
+
+        # Total percentage should be between 0 and 100
+        assert coverage["total_percentage"] >= 0
+        assert coverage["total_percentage"] <= 100
+
+        # Each module percentage should be valid
+        for mod <- coverage["modules"] do
+          assert mod["percentage"] >= 0, "Module #{mod["module"]} has percentage < 0"
+          assert mod["percentage"] <= 100, "Module #{mod["module"]} has percentage > 100"
+        end
+      after
+        cleanup.()
+      end
     end
   end
 end
