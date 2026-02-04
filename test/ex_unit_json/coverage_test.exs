@@ -4,10 +4,10 @@ defmodule ExUnitJSON.CoverageTest do
   alias ExUnitJSON.Coverage
 
   # Coverage tests must run synchronously since :cover is global state.
-  # These tests conflict with mix test.json's coverage collection.
+  # These tests conflict with coverage collection when using --cover flag.
   #
-  # When coverage is enabled, mix test.json automatically excludes this tag.
-  # To run these tests: mix test.json --no-cover test/ex_unit_json/coverage_test.exs
+  # When --cover is used, mix test.json automatically excludes this tag.
+  # With default behavior (no --cover), these tests run normally.
   @moduletag :coverage_unit
 
   describe "start/0" do

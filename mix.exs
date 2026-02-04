@@ -1,7 +1,7 @@
 defmodule ExUnitJSON.MixProject do
   use Mix.Project
 
-  @version "0.4.0"
+  @version "0.4.1"
   @source_url "https://github.com/ZenHive/ex_unit_json"
 
   def project do
@@ -29,7 +29,7 @@ defmodule ExUnitJSON.MixProject do
 
   def cli do
     [
-      preferred_envs: ["test.json": :test]
+      preferred_envs: ["test.json": :test, "dialyzer.json": :dev]
     ]
   end
 
@@ -40,6 +40,7 @@ defmodule ExUnitJSON.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:dialyzer_json, "~> 0.1.0", only: [:dev, :test], runtime: false},
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.0", only: :dev},
       {:styler, "~> 1.0", only: [:dev, :test], runtime: false},

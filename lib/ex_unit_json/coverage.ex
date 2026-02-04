@@ -2,9 +2,9 @@ defmodule ExUnitJSON.Coverage do
   @moduledoc """
   Coverage collection for ExUnitJSON.
 
-  Note: Unit tests for this module require `--no-cover` flag since they
-  directly manipulate `:cover` state which conflicts with coverage collection.
-  Run with: `mix test.json --no-cover test/ex_unit_json/coverage_test.exs`
+  Note: Unit tests for this module directly manipulate `:cover` state.
+  They work fine with coverage OFF (default) but conflict with `--cover`.
+  Run with: `mix test.json test/ex_unit_json/coverage_test.exs`
 
   Provides functions to start, collect, and stop code coverage analysis
   using Erlang's `:cover` module. Outputs machine-readable coverage data
@@ -14,11 +14,11 @@ defmodule ExUnitJSON.Coverage do
 
   Coverage is typically managed by the `mix test.json` task:
 
-      # Coverage ON by default
+      # Coverage off by default (faster)
       mix test.json
 
-      # Disable coverage
-      mix test.json --no-cover
+      # Enable coverage
+      mix test.json --cover
 
   ## Direct Usage
 
@@ -172,7 +172,6 @@ defmodule ExUnitJSON.Coverage do
 
   @doc false
   # Compiles all project modules for coverage
-  # sobelow_skip ["DOS.StringToAtom"]
   @spec compile_project_modules() :: :ok | {:error, term()}
   defp compile_project_modules do
     # Get compile paths from Mix
@@ -185,16 +184,8 @@ defmodule ExUnitJSON.Coverage do
       |> Path.wildcard()
 
     # Compile each module for coverage
-    # Safe: beam filenames come from _build directory, not user input
-    results =
-      Enum.map(beam_files, fn beam_file ->
-        module =
-          beam_file
-          |> Path.basename(".beam")
-          |> String.to_atom()
-
-        :cover.compile_beam(module)
-      end)
+    # Pass the beam file path directly (not module atom) so :cover can find it
+    results = Enum.map(beam_files, &:cover.compile_beam(String.to_charlist(&1)))
 
     # Check for errors
     errors = Enum.filter(results, &match?({:error, _}, &1))

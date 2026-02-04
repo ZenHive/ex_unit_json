@@ -4,6 +4,50 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.4.1 (2026-02-04)
+
+### Breaking Changes
+
+**Coverage is now OFF by default (use `--cover` to enable)**
+
+Changed coverage from on-by-default to off-by-default for faster test runs.
+
+**Before (v0.4.0):**
+```bash
+mix test.json --quiet        # Coverage enabled by default
+mix test.json --quiet --no-cover  # Disable coverage
+```
+
+**After (v0.4.1+):**
+```bash
+mix test.json --quiet        # No coverage (faster)
+mix test.json --quiet --cover    # Enable coverage
+```
+
+**Rationale:**
+- Coverage has ordering/timing issues that are hard to pin down
+- Most test runs just need pass/fail, not coverage
+- Explicit `--cover` is clearer than implicit coverage
+- Faster default test runs without coverage overhead
+
+### Bug Fixes
+
+**Fix: `--cover --compact` no longer crashes**
+
+Previously, using `--cover` with `--compact` would crash because `:json.decode` cannot parse JSONL (one JSON object per line). Now outputs a warning to stderr and skips coverage merge.
+
+**Fix: Coverage works on clean builds**
+
+Previously, coverage on a clean build would report empty data because `compile_project_modules()` ran before compilation. Now ensures `mix compile` runs before coverage instrumentation starts.
+
+### Internal
+
+- Added `test_apps/coverage_app/` for coverage regression testing
+- Clean build test uses isolated `MIX_BUILD_PATH` instead of destructive `mix clean`
+- Added `dialyzer_json` dependency for type checking
+
+---
+
 ## v0.4.0 (2026-02-04)
 
 ### New Features

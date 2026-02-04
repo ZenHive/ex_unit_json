@@ -118,7 +118,7 @@ Returns just counts: total, passed, failed, skipped. Use when you need total cou
 | `--filter-out "X"` | Exclude failures matching pattern. Can repeat. |
 | `--output FILE` | Write to file instead of stdout. |
 | `--no-warn` | Suppress the "use --failed" warning. |
-| `--no-cover` | Disable code coverage (faster runs). |
+| `--cover` | Enable code coverage. |
 
 ## Output Structure
 
@@ -149,7 +149,7 @@ Returns just counts: total, passed, failed, skipped. Use when you need total cou
 ```
 
 Notes:
-- `coverage` is included by default (use `--no-cover` to disable)
+- `coverage` is included when using `--cover` flag
 - `filtered` only appears with `--filter-out`
 - `error_groups` only appears with `--group-by-error`
 - `tests` is omitted with `--summary-only`

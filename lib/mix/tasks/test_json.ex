@@ -38,11 +38,15 @@ defmodule Mix.Tasks.Test.Json do
     * `--group-by-error` - Group failures by similar error message
     * `--quiet` - Suppress Logger output and TIP warnings for clean JSON piping
     * `--no-warn` - Suppress the "use --failed" warning when previous failures exist
-    * `--no-cover` - Disable code coverage (coverage is ON by default)
+    * `--cover` - Enable code coverage (off by default for faster runs)
 
   ## Coverage
 
-  Coverage is enabled by default. The JSON output includes a `coverage` key with:
+  Coverage is disabled by default for faster test runs. Use `--cover` to enable:
+
+      mix test.json --cover
+
+  The JSON output includes a `coverage` key with:
 
       "coverage": {
         "total_percentage": 96.96,
@@ -58,8 +62,6 @@ defmodule Mix.Tasks.Test.Json do
           }
         ]
       }
-
-  Use `--no-cover` to disable coverage collection for faster test runs.
 
   ## Default Behavior (v0.3.0+)
 
@@ -128,8 +130,14 @@ defmodule Mix.Tasks.Test.Json do
     # Setup quiet mode if requested
     maybe_enable_quiet_mode(opts)
 
-    # Coverage is ON by default, disable with --no-cover
-    cover_enabled? = Keyword.get(opts, :cover, true)
+    # Coverage is OFF by default, enable with --cover
+    cover_enabled? = Keyword.get(opts, :cover, false)
+
+    # Ensure project is compiled before coverage instrumentation.
+    # On clean builds, compile_project_modules() would otherwise find no beam files
+    # because Mix.Task.run("test", ...) triggers compilation AFTER coverage starts.
+    if cover_enabled?, do: Mix.Task.run("compile", ["--no-warnings-as-errors"])
+
     test_args = maybe_start_coverage(test_args, cover_enabled?)
 
     # When coverage is enabled or --quiet is used, we need to buffer output to a temp file
@@ -165,7 +173,7 @@ defmodule Mix.Tasks.Test.Json do
       # Coverage enabled with explicit --output file
       cover_enabled? and Keyword.has_key?(opts, :output) ->
         output_path = Keyword.get(opts, :output)
-        merge_coverage_into_file(output_path)
+        merge_coverage_into_file(output_path, opts)
 
       # Same as above - skip stop() to avoid killing the process
 
@@ -228,8 +236,8 @@ defmodule Mix.Tasks.Test.Json do
     extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
   end
 
-  defp extract_json_opts(["--no-cover" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:cover, false} | opts], remaining)
+  defp extract_json_opts(["--cover" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:cover, true} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do
@@ -267,7 +275,6 @@ defmodule Mix.Tasks.Test.Json do
   # Starts coverage instrumentation and excludes conflicting tests
   @spec maybe_start_coverage([String.t()], boolean()) :: [String.t()]
   defp maybe_start_coverage(test_args, true = _cover_enabled?) do
-    Application.put_env(:ex_unit_json, :coverage_active, true)
     ExUnitJSON.Coverage.start()
     ["--exclude", "coverage_unit" | test_args]
   end
@@ -491,6 +498,27 @@ defmodule Mix.Tasks.Test.Json do
   # Merges coverage data into the JSON output and writes to final destination.
   @spec merge_coverage_into_output(String.t(), keyword()) :: :ok
   defp merge_coverage_into_output(temp_path, opts) do
+    # Coverage cannot be merged into compact JSONL output.
+    # Compact mode outputs one JSON object per line, but coverage needs to be
+    # merged into the summary object which requires parsing the full document.
+    if Keyword.get(opts, :compact, false) do
+      IO.puts(:stderr, "Warning: --cover with --compact is not supported. Coverage data omitted.")
+      output_buffered_json(temp_path)
+      return_ok()
+    else
+      merge_coverage_into_json(temp_path, opts)
+    end
+  end
+
+  @doc false
+  # Helper to return :ok (extracted for coverage of compact mode branch)
+  @spec return_ok() :: :ok
+  defp return_ok, do: :ok
+
+  @doc false
+  # Actually merges coverage into JSON output (non-compact mode)
+  @spec merge_coverage_into_json(String.t(), keyword()) :: :ok
+  defp merge_coverage_into_json(temp_path, opts) do
     ignore_modules = get_coverage_ignore_modules()
     coverage = ExUnitJSON.Coverage.collect(ignore_modules)
 
@@ -526,8 +554,21 @@ defmodule Mix.Tasks.Test.Json do
   @doc false
   # Merges coverage data into an existing output file.
   # Used when user specifies --output and coverage is enabled.
-  @spec merge_coverage_into_file(String.t()) :: :ok
-  defp merge_coverage_into_file(path) do
+  @spec merge_coverage_into_file(String.t(), keyword()) :: :ok
+  defp merge_coverage_into_file(path, opts) do
+    # Coverage cannot be merged into compact JSONL output.
+    if Keyword.get(opts, :compact, false) do
+      IO.puts(:stderr, "Warning: --cover with --compact is not supported. Coverage data omitted.")
+      return_ok()
+    else
+      merge_coverage_into_file_json(path)
+    end
+  end
+
+  @doc false
+  # Actually merges coverage into file (non-compact mode)
+  @spec merge_coverage_into_file_json(String.t()) :: :ok
+  defp merge_coverage_into_file_json(path) do
     ignore_modules = get_coverage_ignore_modules()
     coverage = ExUnitJSON.Coverage.collect(ignore_modules)
 

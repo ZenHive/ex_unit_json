@@ -1,3 +1,2 @@
 
-DOS.StringToAtom: Unsafe `String.to_atom`,lib/ex_unit_json/coverage.ex:194,264B923
 Traversal.FileModule: Directory Traversal in `File.write`,lib/ex_unit_json/formatter.ex:167,59F58A7

@@ -74,10 +74,10 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
-    test "parses --no-cover flag" do
-      {opts, rest} = parse_args(["--no-cover"])
+    test "parses --cover flag" do
+      {opts, rest} = parse_args(["--cover"])
 
-      assert opts[:cover] == false
+      assert opts[:cover] == true
       assert rest == []
     end
 
@@ -1200,8 +1200,8 @@ defmodule Mix.Tasks.Test.JsonTest do
     extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
   end
 
-  defp extract_json_opts(["--no-cover" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:cover, false} | opts], remaining)
+  defp extract_json_opts(["--cover" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:cover, true} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do
@@ -1290,6 +1290,39 @@ defmodule Mix.Tasks.Test.JsonTest do
         stderr_to_stdout: true,
         env: [{"MIX_ENV", "test"}, {"MIX_QUIET", "1"}]
       )
+
+    {output, exit_code}
+  end
+
+  # Helper to run mix test.json in the coverage test app
+  # This app has lib code to test coverage instrumentation.
+  # Supports :isolated_build option to use a unique MIX_BUILD_PATH (simulates clean build).
+  defp run_mix_test_json_in_coverage_app(args, opts \\ []) do
+    coverage_app_dir = Path.expand("../../../test_apps/coverage_app", __DIR__)
+    cmd_args = ["test.json" | args]
+
+    env = [{"MIX_ENV", "test"}]
+
+    # Use isolated build path to simulate clean build without destructive commands
+    {env, temp_build_path} =
+      if Keyword.get(opts, :isolated_build, false) do
+        temp_path = Path.join(System.tmp_dir!(), "ex_unit_json_build_#{System.unique_integer([:positive])}")
+        {[{"MIX_BUILD_PATH", temp_path} | env], temp_path}
+      else
+        {env, nil}
+      end
+
+    {output, exit_code} =
+      System.cmd("mix", cmd_args,
+        cd: coverage_app_dir,
+        stderr_to_stdout: true,
+        env: env
+      )
+
+    # Clean up isolated build directory if used
+    if temp_build_path && File.exists?(temp_build_path) do
+      File.rm_rf!(temp_build_path)
+    end
 
     {output, exit_code}
   end
@@ -1409,7 +1442,7 @@ defmodule Mix.Tasks.Test.JsonTest do
     @describetag :coverage_integration
 
     @tag :coverage_integration
-    test "includes coverage by default" do
+    test "excludes coverage by default" do
       {test_file, cleanup} =
         create_temp_test_file("""
         defmodule IntegrationCoverageDefaultTest do
@@ -1426,8 +1459,34 @@ defmodule Mix.Tasks.Test.JsonTest do
         assert exit_code == 0
         assert {:ok, json} = decode_json(output)
 
-        # Coverage should be present by default
-        assert Map.has_key?(json, "coverage"), "Expected coverage key in JSON output"
+        # Coverage should NOT be present by default (v0.5.0+)
+        refute Map.has_key?(json, "coverage"),
+               "Expected no coverage key by default (use --cover to enable)"
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :coverage_integration
+    test "--cover includes coverage in output" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverTest do
+          use ExUnit.Case
+          test "passes" do
+            assert 1 == 1
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet", "--cover"])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+
+        # Coverage should be present with --cover
+        assert Map.has_key?(json, "coverage"), "Expected coverage key with --cover flag"
 
         coverage = json["coverage"]
         assert Map.has_key?(coverage, "total_percentage")
@@ -1439,32 +1498,6 @@ defmodule Mix.Tasks.Test.JsonTest do
         assert is_integer(coverage["total_lines"])
         assert is_integer(coverage["covered_lines"])
         assert is_list(coverage["modules"])
-      after
-        cleanup.()
-      end
-    end
-
-    @tag :coverage_integration
-    test "--no-cover excludes coverage from output" do
-      {test_file, cleanup} =
-        create_temp_test_file("""
-        defmodule IntegrationNoCoverTest do
-          use ExUnit.Case
-          test "passes" do
-            assert 1 == 1
-          end
-        end
-        """)
-
-      try do
-        {output, exit_code} = run_mix_test_json([test_file, "--quiet", "--no-cover"])
-
-        assert exit_code == 0
-        assert {:ok, json} = decode_json(output)
-
-        # Coverage should NOT be present with --no-cover
-        refute Map.has_key?(json, "coverage"),
-               "Expected no coverage key with --no-cover flag"
       after
         cleanup.()
       end
@@ -1484,7 +1517,7 @@ defmodule Mix.Tasks.Test.JsonTest do
         """)
 
       try do
-        {output, exit_code} = run_mix_test_json([test_file, "--quiet"])
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet", "--cover"])
 
         assert exit_code == 0
         assert {:ok, json} = decode_json(output)
@@ -1528,7 +1561,7 @@ defmodule Mix.Tasks.Test.JsonTest do
       output_file = Path.join(System.tmp_dir!(), "coverage_output_#{System.unique_integer([:positive])}.json")
 
       try do
-        {_output, exit_code} = run_mix_test_json([test_file, "--output", output_file])
+        {_output, exit_code} = run_mix_test_json([test_file, "--cover", "--output", output_file])
 
         assert exit_code == 0
         assert File.exists?(output_file)
@@ -1560,7 +1593,7 @@ defmodule Mix.Tasks.Test.JsonTest do
         """)
 
       try do
-        {output, exit_code} = run_mix_test_json([test_file, "--quiet"])
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet", "--cover"])
 
         assert exit_code == 0
         assert {:ok, json} = decode_json(output)
@@ -1579,6 +1612,119 @@ defmodule Mix.Tasks.Test.JsonTest do
       after
         cleanup.()
       end
+    end
+
+    @tag :coverage_integration
+    test "--cover with --compact outputs warning and JSONL without coverage" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverCompactTest do
+          use ExUnit.Case
+          test "passes" do
+            assert 1 == 1
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--cover", "--compact", "--all"])
+
+        assert exit_code == 0
+
+        # Should output a warning about unsupported combination
+        assert output =~ "Warning" or output =~ "--cover with --compact is not supported"
+
+        # Output should be JSONL (one JSON per line) - find the test result line
+        lines = String.split(output, "\n", trim: true)
+        json_lines = Enum.filter(lines, &String.starts_with?(&1, "{"))
+        assert json_lines != [], "Expected at least one JSON line in compact output"
+
+        # The JSONL output should NOT have coverage merged in (it's omitted)
+        for json_line <- json_lines do
+          json = :json.decode(json_line)
+
+          refute Map.has_key?(json, "coverage"),
+                 "Coverage should not be in compact JSONL output"
+        end
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :coverage_integration
+    test "--cover with --compact and --output outputs warning" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverCompactOutputTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      output_file = Path.join(System.tmp_dir!(), "cover_compact_#{System.unique_integer([:positive])}.json")
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file, "--cover", "--compact", "--output", output_file])
+
+        assert exit_code == 0
+
+        # Should output a warning
+        assert output =~ "Warning" or output =~ "--cover with --compact is not supported"
+
+        # File should exist and contain JSONL
+        assert File.exists?(output_file)
+        content = File.read!(output_file)
+
+        # JSONL lines should NOT have coverage
+        lines = String.split(content, "\n", trim: true)
+
+        for line <- lines, String.starts_with?(line, "{") do
+          json = :json.decode(line)
+          refute Map.has_key?(json, "coverage")
+        end
+      after
+        cleanup.()
+        File.rm(output_file)
+      end
+    end
+
+    @tag :coverage_integration
+    @tag :clean_build
+    test "coverage works on clean build (regression test)" do
+      # This test verifies that coverage instrumentation works even on a clean build
+      # where beam files don't exist yet. The fix ensures compilation happens BEFORE
+      # coverage instrumentation starts.
+      #
+      # We use the coverage_app test app with an isolated MIX_BUILD_PATH to simulate
+      # a clean build without running destructive commands like `mix clean`.
+
+      # Run with coverage using isolated build path (simulates clean build)
+      {output, exit_code} = run_mix_test_json_in_coverage_app(["--quiet", "--cover"], isolated_build: true)
+
+      assert exit_code == 0, "Expected exit code 0, got #{exit_code}. Output: #{output}"
+      assert {:ok, json} = decode_json(output)
+
+      # Coverage should be present
+      assert Map.has_key?(json, "coverage"),
+             "Expected coverage data on clean build. Output: #{output}"
+
+      coverage = json["coverage"]
+
+      # Should have non-empty coverage data
+      assert coverage["modules"] != [],
+             "Expected at least one module in coverage on clean build"
+
+      # Should find the CoverageApp module specifically
+      coverage_app_module = Enum.find(coverage["modules"], &(&1["module"] == "CoverageApp"))
+
+      assert coverage_app_module != nil,
+             "Expected CoverageApp module in coverage. Got modules: #{inspect(Enum.map(coverage["modules"], & &1["module"]))}"
+
+      # The module should have reasonable coverage (tests exercise all functions)
+      assert coverage_app_module["percentage"] > 0,
+             "Expected non-zero coverage for CoverageApp module"
     end
   end
 end

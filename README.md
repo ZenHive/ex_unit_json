@@ -8,7 +8,7 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 
 - Drop-in replacement for `mix test` with JSON output
 - **AI-optimized default**: Shows only failures (use `--all` for all tests)
-- **Code coverage** included by default (use `--no-cover` to disable)
+- **Code coverage** available with `--cover` flag
 - All test states: passed, failed, skipped, excluded
 - Detailed failure information with assertion values and stacktraces
 - Filtering options: `--summary-only`, `--all`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`
@@ -110,8 +110,8 @@ mix test.json --quiet --output results.json
 # Suppress the "use --failed" warning
 mix test.json --quiet --no-warn
 
-# Disable code coverage (faster test runs)
-mix test.json --quiet --no-cover
+# Enable code coverage
+mix test.json --quiet --cover
 
 # Combine options
 mix test.json --quiet --all --output all_results.json
@@ -121,7 +121,13 @@ All standard `mix test` options are also supported (file paths, line numbers, et
 
 ### Code Coverage
 
-Coverage is enabled by default and included in the JSON output:
+Coverage is disabled by default for faster test runs. Use `--cover` to enable:
+
+```bash
+mix test.json --quiet --cover
+```
+
+The JSON output includes a `coverage` key:
 
 ```json
 {
@@ -140,12 +146,6 @@ Coverage is enabled by default and included in the JSON output:
     ]
   }
 }
-```
-
-Use `--no-cover` to disable coverage collection for faster test runs:
-
-```bash
-mix test.json --quiet --no-cover
 ```
 
 Configure modules to ignore in `mix.exs`:
@@ -227,7 +227,7 @@ jq '.tests[] | select(.state == "failed")' /tmp/results.json
 | `tests` | array | Individual test results (omitted with `--summary-only`) |
 | `error_groups` | array | Failures grouped by message (only with `--group-by-error`) |
 | `module_failures` | array | setup_all failures (only present when failures occur) |
-| `coverage` | object | Code coverage data (omitted with `--no-cover`) |
+| `coverage` | object | Code coverage data (included with `--cover`) |
 
 ### Summary Object
 
