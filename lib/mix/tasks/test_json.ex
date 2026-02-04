@@ -39,6 +39,7 @@ defmodule Mix.Tasks.Test.Json do
     * `--quiet` - Suppress Logger output and TIP warnings for clean JSON piping
     * `--no-warn` - Suppress the "use --failed" warning when previous failures exist
     * `--cover` - Enable code coverage (off by default for faster runs)
+    * `--cover-threshold N` - Fail if overall coverage is below N (0-100). Requires `--cover`
 
   ## Coverage
 
@@ -52,6 +53,8 @@ defmodule Mix.Tasks.Test.Json do
         "total_percentage": 96.96,
         "total_lines": 330,
         "covered_lines": 320,
+        "threshold": 80,
+        "threshold_met": true,
         "modules": [
           {
             "module": "MyApp.Module",
@@ -120,12 +123,17 @@ defmodule Mix.Tasks.Test.Json do
 
   require Logger
 
+  @cover_threshold_min 0.0
+  @cover_threshold_max 100.0
+  @cover_threshold_exit_code 2
+
   @impl Mix.Task
   def run(args) do
     ensure_test_env!()
 
     # Extract only our options, pass everything else to mix test unchanged
     {opts, test_args} = extract_json_opts(args)
+    opts = normalize_cover_threshold!(opts)
 
     # Setup quiet mode if requested
     maybe_enable_quiet_mode(opts)
@@ -238,6 +246,10 @@ defmodule Mix.Tasks.Test.Json do
 
   defp extract_json_opts(["--cover" | rest], opts, remaining) do
     extract_json_opts(rest, [{:cover, true} | opts], remaining)
+  end
+
+  defp extract_json_opts(["--cover-threshold", value | rest], opts, remaining) do
+    extract_json_opts(rest, [{:cover_threshold, value} | opts], remaining)
   end
 
   defp extract_json_opts([arg | rest], opts, remaining) do
@@ -504,6 +516,7 @@ defmodule Mix.Tasks.Test.Json do
     if Keyword.get(opts, :compact, false) do
       IO.puts(:stderr, "Warning: --cover with --compact is not supported. Coverage data omitted.")
       output_buffered_json(temp_path)
+      maybe_enforce_cover_threshold(opts)
       return_ok()
     else
       merge_coverage_into_json(temp_path, opts)
@@ -519,8 +532,7 @@ defmodule Mix.Tasks.Test.Json do
   # Actually merges coverage into JSON output (non-compact mode)
   @spec merge_coverage_into_json(String.t(), keyword()) :: :ok
   defp merge_coverage_into_json(temp_path, opts) do
-    ignore_modules = get_coverage_ignore_modules()
-    coverage = ExUnitJSON.Coverage.collect(ignore_modules)
+    {coverage, threshold_met?} = collect_coverage_with_threshold(opts)
 
     case File.read(temp_path) do
       {:ok, content} ->
@@ -543,6 +555,7 @@ defmodule Mix.Tasks.Test.Json do
         end
 
         File.rm(temp_path)
+        maybe_exit_on_cover_threshold(threshold_met?, coverage)
         :ok
 
       {:error, _} ->
@@ -559,18 +572,18 @@ defmodule Mix.Tasks.Test.Json do
     # Coverage cannot be merged into compact JSONL output.
     if Keyword.get(opts, :compact, false) do
       IO.puts(:stderr, "Warning: --cover with --compact is not supported. Coverage data omitted.")
+      maybe_enforce_cover_threshold(opts)
       return_ok()
     else
-      merge_coverage_into_file_json(path)
+      merge_coverage_into_file_json(path, opts)
     end
   end
 
   @doc false
   # Actually merges coverage into file (non-compact mode)
-  @spec merge_coverage_into_file_json(String.t()) :: :ok
-  defp merge_coverage_into_file_json(path) do
-    ignore_modules = get_coverage_ignore_modules()
-    coverage = ExUnitJSON.Coverage.collect(ignore_modules)
+  @spec merge_coverage_into_file_json(String.t(), keyword()) :: :ok
+  defp merge_coverage_into_file_json(path, opts) do
+    {coverage, threshold_met?} = collect_coverage_with_threshold(opts)
 
     case File.read(path) do
       {:ok, content} ->
@@ -578,6 +591,7 @@ defmodule Mix.Tasks.Test.Json do
         merged = Map.put(document, "coverage", coverage)
         encoded = :json.encode(merged)
         File.write!(path, encoded)
+        maybe_exit_on_cover_threshold(threshold_met?, coverage)
         :ok
 
       {:error, _} ->
@@ -594,5 +608,89 @@ defmodule Mix.Tasks.Test.Json do
       nil -> []
       config -> Keyword.get(config, :ignore_modules, [])
     end
+  end
+
+  @doc false
+  @spec normalize_cover_threshold!(keyword()) :: keyword()
+  defp normalize_cover_threshold!(opts) do
+    case Keyword.fetch(opts, :cover_threshold) do
+      :error ->
+        opts
+
+      {:ok, value} ->
+        if !Keyword.get(opts, :cover, false) do
+          Mix.raise("--cover-threshold requires --cover")
+        end
+
+        threshold = parse_cover_threshold!(value)
+        Keyword.put(opts, :cover_threshold, threshold)
+    end
+  end
+
+  @doc false
+  @spec parse_cover_threshold!(String.t() | number()) :: number()
+  defp parse_cover_threshold!(value) when is_number(value) do
+    validate_cover_threshold!(value)
+  end
+
+  defp parse_cover_threshold!(value) when is_binary(value) do
+    case Float.parse(value) do
+      {threshold, ""} ->
+        validate_cover_threshold!(threshold)
+
+      _ ->
+        Mix.raise("--cover-threshold must be a number between #{@cover_threshold_min} and #{@cover_threshold_max}")
+    end
+  end
+
+  @doc false
+  @spec validate_cover_threshold!(number()) :: number()
+  defp validate_cover_threshold!(threshold) do
+    if threshold < @cover_threshold_min or threshold > @cover_threshold_max do
+      Mix.raise("--cover-threshold must be between #{@cover_threshold_min} and #{@cover_threshold_max}")
+    end
+
+    threshold
+  end
+
+  @doc false
+  @spec collect_coverage_with_threshold(keyword()) :: {map(), boolean() | nil}
+  defp collect_coverage_with_threshold(opts) do
+    ignore_modules = get_coverage_ignore_modules()
+    coverage = ExUnitJSON.Coverage.collect(ignore_modules)
+
+    case Keyword.fetch(opts, :cover_threshold) do
+      :error ->
+        {coverage, nil}
+
+      {:ok, threshold} ->
+        threshold_met? = coverage["total_percentage"] >= threshold
+        updated = Map.merge(coverage, %{"threshold" => threshold, "threshold_met" => threshold_met?})
+        {updated, threshold_met?}
+    end
+  end
+
+  @doc false
+  @spec maybe_enforce_cover_threshold(keyword()) :: :ok
+  defp maybe_enforce_cover_threshold(opts) do
+    if Keyword.has_key?(opts, :cover_threshold) do
+      {coverage, threshold_met?} = collect_coverage_with_threshold(opts)
+      maybe_exit_on_cover_threshold(threshold_met?, coverage)
+    end
+
+    :ok
+  end
+
+  @doc false
+  @spec maybe_exit_on_cover_threshold(boolean() | nil, map()) :: :ok
+  defp maybe_exit_on_cover_threshold(nil, _coverage), do: :ok
+  defp maybe_exit_on_cover_threshold(true, _coverage), do: :ok
+
+  defp maybe_exit_on_cover_threshold(false, coverage) do
+    total = coverage["total_percentage"]
+    threshold = coverage["threshold"]
+
+    IO.puts(:stderr, "ERROR: Coverage #{total}% is below threshold #{threshold}%")
+    exit({:shutdown, @cover_threshold_exit_code})
   end
 end

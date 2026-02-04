@@ -3,6 +3,16 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   alias Mix.Tasks.Test.Json
 
+  @cover_threshold_requires_cover 80
+  @cover_threshold_met_value 0.0
+  @cover_threshold_fail_value 100.0
+  @cover_threshold_exit_code 2
+  @exit_code_success 0
+  @binary_start_index 0
+  @json_object_open_char "{"
+  @json_object_close_char "}"
+  @json_object_close_len byte_size(@json_object_close_char)
+
   # Store original config to restore after each test
   setup do
     original = Application.get_env(:ex_unit_json, :opts)
@@ -78,6 +88,14 @@ defmodule Mix.Tasks.Test.JsonTest do
       {opts, rest} = parse_args(["--cover"])
 
       assert opts[:cover] == true
+      assert rest == []
+    end
+
+    test "parses --cover-threshold option with value" do
+      value = Integer.to_string(@cover_threshold_requires_cover)
+      {opts, rest} = parse_args(["--cover-threshold", value])
+
+      assert opts[:cover_threshold] == value
       assert rest == []
     end
 
@@ -230,6 +248,7 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert moduledoc =~ "--summary-only"
       assert moduledoc =~ "--failures-only"
       assert moduledoc =~ "--output FILE"
+      assert moduledoc =~ "--cover-threshold"
     end
   end
 
@@ -1204,6 +1223,10 @@ defmodule Mix.Tasks.Test.JsonTest do
     extract_json_opts(rest, [{:cover, true} | opts], remaining)
   end
 
+  defp extract_json_opts(["--cover-threshold", value | rest], opts, remaining) do
+    extract_json_opts(rest, [{:cover_threshold, value} | opts], remaining)
+  end
+
   defp extract_json_opts([arg | rest], opts, remaining) do
     extract_json_opts(rest, opts, [arg | remaining])
   end
@@ -1243,7 +1266,7 @@ defmodule Mix.Tasks.Test.JsonTest do
     {output, exit_code}
   end
 
-  # Helper to decode JSON, handling potential compilation output prefix.
+  # Helper to decode JSON, handling potential compilation output prefix/suffix.
   # :json.decode/1 returns the decoded value directly (not {:ok, value}).
   defp decode_json(output) do
     # The output may contain compilation messages before the JSON.
@@ -1251,16 +1274,53 @@ defmodule Mix.Tasks.Test.JsonTest do
     json_line =
       output
       |> String.split("\n")
-      |> Enum.filter(&String.starts_with?(&1, "{"))
+      |> Enum.filter(&String.starts_with?(&1, @json_object_open_char))
       |> List.last()
 
     case json_line do
       nil -> {:error, :no_json_found}
-      line -> {:ok, :json.decode(line)}
+      line -> decode_json_line(line)
     end
+  end
+
+  defp decode_json_line(line) do
+    case try_decode_json(line) do
+      {:ok, json} ->
+        {:ok, json}
+
+      {:error, _reason} ->
+        line
+        |> trim_after_last_brace()
+        |> try_decode_json()
+    end
+  end
+
+  defp try_decode_json(line) do
+    {:ok, :json.decode(line)}
   rescue
     e in [ArgumentError, ErlangError] ->
       {:error, {:decode_failed, Exception.message(e)}}
+  end
+
+  defp trim_after_last_brace(line) do
+    case last_index(line, @json_object_close_char) do
+      nil ->
+        line
+
+      idx ->
+        binary_part(line, @binary_start_index, idx + @json_object_close_len)
+    end
+  end
+
+  defp last_index(string, pattern) do
+    case :binary.matches(string, pattern) do
+      [] ->
+        nil
+
+      matches ->
+        {idx, _len} = List.last(matches)
+        idx
+    end
   end
 
   # Helper to run mix test.json in the Phoenix test app
@@ -1297,7 +1357,7 @@ defmodule Mix.Tasks.Test.JsonTest do
   # Helper to run mix test.json in the coverage test app
   # This app has lib code to test coverage instrumentation.
   # Supports :isolated_build option to use a unique MIX_BUILD_PATH (simulates clean build).
-  defp run_mix_test_json_in_coverage_app(args, opts \\ []) do
+  defp run_mix_test_json_in_coverage_app(args, opts) do
     coverage_app_dir = Path.expand("../../../test_apps/coverage_app", __DIR__)
     cmd_args = ["test.json" | args]
 
@@ -1498,6 +1558,84 @@ defmodule Mix.Tasks.Test.JsonTest do
         assert is_integer(coverage["total_lines"])
         assert is_integer(coverage["covered_lines"])
         assert is_list(coverage["modules"])
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :coverage_integration
+    test "--cover-threshold requires --cover" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverThresholdRequiresCoverTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        value = Integer.to_string(@cover_threshold_requires_cover)
+        {output, exit_code} = run_mix_test_json([test_file, "--cover-threshold", value])
+
+        refute exit_code == @exit_code_success
+        assert output =~ "--cover-threshold requires --cover"
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :coverage_integration
+    test "--cover-threshold adds metadata and passes when met" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverThresholdMetTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        value = Float.to_string(@cover_threshold_met_value)
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet", "--cover", "--cover-threshold", value])
+
+        assert exit_code == @exit_code_success
+        assert {:ok, json} = decode_json(output)
+        coverage = json["coverage"]
+
+        assert coverage["threshold"] == @cover_threshold_met_value
+        assert coverage["threshold_met"] == true
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :coverage_integration
+    test "--cover-threshold fails when below threshold" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationCoverThresholdFailTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        value = Float.to_string(@cover_threshold_fail_value)
+        {output, exit_code} = run_mix_test_json([test_file, "--quiet", "--cover", "--cover-threshold", value])
+
+        assert exit_code == @cover_threshold_exit_code
+        assert {:ok, json} = decode_json(output)
+        coverage = json["coverage"]
+
+        assert coverage["threshold"] == @cover_threshold_fail_value
+        assert coverage["threshold_met"] == false
+        assert coverage["total_percentage"] < coverage["threshold"]
       after
         cleanup.()
       end

@@ -9,6 +9,7 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 - Drop-in replacement for `mix test` with JSON output
 - **AI-optimized default**: Shows only failures (use `--all` for all tests)
 - **Code coverage** available with `--cover` flag
+- **Coverage gating** with `--cover-threshold N` (fails if overall coverage drops below N)
 - All test states: passed, failed, skipped, excluded
 - Detailed failure information with assertion values and stacktraces
 - Filtering options: `--summary-only`, `--all`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`
@@ -113,6 +114,9 @@ mix test.json --quiet --no-warn
 # Enable code coverage
 mix test.json --quiet --cover
 
+# Fail if overall coverage drops below threshold (requires --cover)
+mix test.json --quiet --cover --cover-threshold 80
+
 # Combine options
 mix test.json --quiet --all --output all_results.json
 ```
@@ -135,6 +139,8 @@ The JSON output includes a `coverage` key:
     "total_percentage": 92.5,
     "total_lines": 400,
     "covered_lines": 370,
+    "threshold": 80,
+    "threshold_met": true,
     "modules": [
       {
         "module": "MyApp.Users",
@@ -146,6 +152,14 @@ The JSON output includes a `coverage` key:
     ]
   }
 }
+```
+
+The `threshold` and `threshold_met` fields are only included when using `--cover-threshold`.
+
+Use `--cover-threshold N` to fail the run when overall coverage drops below N:
+
+```bash
+mix test.json --quiet --cover --cover-threshold 80
 ```
 
 Configure modules to ignore in `mix.exs`:

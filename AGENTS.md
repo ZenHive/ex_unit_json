@@ -119,6 +119,7 @@ Returns just counts: total, passed, failed, skipped. Use when you need total cou
 | `--output FILE` | Write to file instead of stdout. |
 | `--no-warn` | Suppress the "use --failed" warning. |
 | `--cover` | Enable code coverage. |
+| `--cover-threshold N` | Fail if overall coverage is below N (0-100). Requires `--cover`. |
 
 ## Output Structure
 
@@ -135,6 +136,8 @@ Returns just counts: total, passed, failed, skipped. Use when you need total cou
     "total_percentage": 92.5,
     "total_lines": 400,
     "covered_lines": 370,
+    "threshold": 80,
+    "threshold_met": true,
     "modules": [...]
   },
   "error_groups": [
@@ -150,6 +153,7 @@ Returns just counts: total, passed, failed, skipped. Use when you need total cou
 
 Notes:
 - `coverage` is included when using `--cover` flag
+- `threshold` and `threshold_met` are included when using `--cover-threshold`
 - `filtered` only appears with `--filter-out`
 - `error_groups` only appears with `--group-by-error`
 - `tests` is omitted with `--summary-only`
@@ -215,7 +219,7 @@ This will block full test runs when failures exist, requiring `--failed` or focu
 | Code | Meaning |
 |------|---------|
 | 0 | All tests passed |
-| 2 | Test failures (JSON still valid, check `summary.result`) |
+| 2 | Test failures or coverage below threshold (JSON still valid, check `summary.result`) |
 
 Note: Exit code 2 may trigger shell error display. Use `2>&1` to capture both streams.
 
