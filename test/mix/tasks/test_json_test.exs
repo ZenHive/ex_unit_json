@@ -867,6 +867,70 @@ defmodule Mix.Tasks.Test.JsonTest do
         cleanup.()
       end
     end
+
+    @tag :integration
+    test "environment variables are inherited by test process" do
+      # This test verifies that environment variables set in the parent process
+      # are accessible to tests run via mix test.json. This is a regression test
+      # for a reported issue where env vars appeared to be missing.
+      env_var_name = "EX_UNIT_JSON_TEST_#{System.unique_integer([:positive])}"
+
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationEnvVarTest do
+          use ExUnit.Case
+
+          test "can read environment variable" do
+            value = System.get_env("#{env_var_name}")
+
+            if is_nil(value) do
+              flunk("Environment variable #{env_var_name} is nil!")
+            end
+
+            assert value == "secret_test_value_123"
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json_with_env([test_file], [{env_var_name, "secret_test_value_123"}])
+
+        assert exit_code == 0, "Expected test to pass. Output: #{output}"
+        assert {:ok, json} = decode_json(output)
+        assert json["summary"]["passed"] == 1
+        assert json["summary"]["failed"] == 0
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "environment variables work with --quiet flag" do
+      # Specifically test that --quiet doesn't affect env var inheritance
+      env_var_name = "EX_UNIT_JSON_QUIET_#{System.unique_integer([:positive])}"
+
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule IntegrationEnvVarQuietTest do
+          use ExUnit.Case
+
+          test "can read environment variable with --quiet" do
+            value = System.get_env("#{env_var_name}")
+            assert value == "quiet_mode_value"
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json_with_env([test_file, "--quiet"], [{env_var_name, "quiet_mode_value"}])
+
+        assert exit_code == 0, "Expected test to pass. Output: #{output}"
+        assert {:ok, json} = decode_json(output)
+        assert json["summary"]["passed"] == 1
+      after
+        cleanup.()
+      end
+    end
   end
 
   describe "focused_run?/1 helper" do
@@ -1253,14 +1317,23 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   # Helper to run mix test.json as a shell command
   defp run_mix_test_json(args) do
+    run_mix_test_json_with_env(args, [])
+  end
+
+  # Helper to run mix test.json with additional environment variables
+  # env_vars is a list of {name, value} tuples to add to the environment
+  defp run_mix_test_json_with_env(args, env_vars) do
     cmd_args = ["test.json" | args]
     project_dir = Path.expand("../../..", __DIR__)
+
+    # Build env list: MIX_ENV=test plus any additional vars
+    env = [{"MIX_ENV", "test"} | env_vars]
 
     {output, exit_code} =
       System.cmd("mix", cmd_args,
         cd: project_dir,
         stderr_to_stdout: true,
-        env: [{"MIX_ENV", "test"}]
+        env: env
       )
 
     {output, exit_code}
