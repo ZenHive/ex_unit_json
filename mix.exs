@@ -1,7 +1,7 @@
 defmodule ExUnitJSON.MixProject do
   use Mix.Project
 
-  @version "0.4.1"
+  @version ".version" |> File.read!() |> String.trim()
   @source_url "https://github.com/ZenHive/ex_unit_json"
 
   def project do
@@ -67,7 +67,7 @@ defmodule ExUnitJSON.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE AGENTS.md)
+      files: ~w(lib .formatter.exs .version mix.exs README.md CHANGELOG.md LICENSE AGENTS.md)
     ]
   end
 
