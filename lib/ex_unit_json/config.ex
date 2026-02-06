@@ -41,7 +41,8 @@ defmodule ExUnitJSON.Config do
     :output,
     :compact,
     :group_by_error,
-    :quiet
+    :quiet,
+    :hint
   ]
 
   @doc """

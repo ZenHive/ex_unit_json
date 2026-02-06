@@ -88,9 +88,9 @@ defmodule ExUnitJSON.MixProject do
 
   defp test_coverage do
     [
-      # Mix task is tested via integration tests that run in subprocess
-      # (System.cmd), so coverage tracking doesn't see it. Exclude from coverage.
-      ignore_modules: [Mix.Tasks.Test.Json],
+      # These modules are tested via integration tests that run in subprocesses
+      # (System.cmd), so coverage tracking doesn't see their execution.
+      ignore_modules: [Mix.Tasks.Test.Json, ExUnitJSON.Coverage],
       threshold: 90
     ]
   end

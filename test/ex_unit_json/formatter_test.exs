@@ -492,6 +492,29 @@ defmodule ExUnitJSON.FormatterTest do
       assert hd(json["module_failures"])["name"] == "FailingSetup.Test"
     end
 
+    test "includes hint in output when hint opt is present" do
+      json =
+        run_formatter(
+          fn pid ->
+            GenServer.cast(pid, {:suite_started, seed: 1})
+            GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+          end,
+          opts: [hint: "3 previous failure(s) exist. Consider: mix test.json --failed"]
+        )
+
+      assert json["hint"] == "3 previous failure(s) exist. Consider: mix test.json --failed"
+    end
+
+    test "omits hint from output when hint opt is nil" do
+      json =
+        run_formatter(fn pid ->
+          GenServer.cast(pid, {:suite_started, seed: 1})
+          GenServer.cast(pid, {:test_finished, build_test(name: :t1, state: nil)})
+        end)
+
+      refute Map.has_key?(json, "hint")
+    end
+
     test "writes to specified output file" do
       output_file = Path.join(System.tmp_dir!(), "explicit_test_output_#{:rand.uniform(100_000)}.json")
       Application.put_env(:ex_unit_json, :opts, output: output_file)
