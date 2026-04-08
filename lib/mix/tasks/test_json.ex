@@ -158,6 +158,11 @@ defmodule Mix.Tasks.Test.Json do
     # Compute hint for JSON output (suggests --failed when appropriate)
     opts = maybe_add_hint_opt(opts, test_args)
 
+    # In umbrella projects, each app runs its own ExUnit suite, each triggering
+    # suite_finished which writes to the output file. Clear the file at the start
+    # so the formatter can detect and merge results from earlier apps in this run.
+    maybe_clear_output_file(opts)
+
     # Options passed via Application env because ExUnit formatter API
     # doesn't support passing options directly to formatters.
     # This is acceptable as test runs are single-instance.
@@ -192,6 +197,17 @@ defmodule Mix.Tasks.Test.Json do
       # No temp buffer, no coverage - formatter already wrote output
       true ->
         :ok
+    end
+  end
+
+  @doc false
+  # Clears the output file at the start of a run so the formatter can distinguish
+  # "file from an earlier app in this umbrella run" from "stale file from a previous run".
+  @spec maybe_clear_output_file(keyword()) :: :ok
+  defp maybe_clear_output_file(opts) do
+    case Keyword.get(opts, :output) do
+      nil -> :ok
+      path -> File.rm(path); :ok
     end
   end
 

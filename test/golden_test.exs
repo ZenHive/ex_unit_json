@@ -237,6 +237,67 @@ defmodule ExUnitJSON.GoldenTest do
     end
   end
 
+  describe "umbrella project support" do
+    @umbrella_dir Path.expand("../test_apps/umbrella_app", __DIR__)
+
+    test "merges results from all umbrella apps into single JSON" do
+      output_file = Path.join(System.tmp_dir!(), "umbrella_test_#{System.unique_integer([:positive])}.json")
+
+      try do
+        {_output, exit_code} =
+          System.cmd("mix", ["test.json", "--all", "--output", output_file],
+            cd: @umbrella_dir,
+            stderr_to_stdout: true,
+            env: [{"MIX_ENV", "test"}]
+          )
+
+        assert exit_code == 0
+
+        {:ok, content} = File.read(output_file)
+        json = :json.decode(content)
+
+        # Should have tests from BOTH apps (3 from app_a + 2 from app_b)
+        assert json["summary"]["total"] == 5
+        assert json["summary"]["passed"] == 5
+        assert json["summary"]["failed"] == 0
+
+        # Tests array should contain all 5 tests
+        assert length(json["tests"]) == 5
+
+        # Should have tests from both modules
+        modules = json["tests"] |> Enum.map(& &1["module"]) |> Enum.uniq() |> Enum.sort()
+        assert modules == ["AppATest", "AppBTest"]
+      after
+        File.rm(output_file)
+      end
+    end
+
+    test "umbrella summary counts are correct" do
+      output_file = Path.join(System.tmp_dir!(), "umbrella_summary_#{System.unique_integer([:positive])}.json")
+
+      try do
+        {_output, _exit_code} =
+          System.cmd("mix", ["test.json", "--all", "--output", output_file],
+            cd: @umbrella_dir,
+            stderr_to_stdout: true,
+            env: [{"MIX_ENV", "test"}]
+          )
+
+        {:ok, content} = File.read(output_file)
+        json = :json.decode(content)
+
+        summary = json["summary"]
+        # duration should be sum of both app durations (> 0)
+        assert summary["duration_us"] > 0
+        assert summary["result"] == "passed"
+        # Total should equal sum of individual state counts
+        assert summary["total"] == summary["passed"] + summary["failed"] + summary["skipped"] + summary["excluded"]
+      after
+        File.rm(output_file)
+      end
+    end
+  end
+
   # Helper to create temporary test files for golden tests
   defp create_golden_test_file(:passing) do
     create_temp_test_file("""
