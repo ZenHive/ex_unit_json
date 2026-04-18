@@ -194,48 +194,74 @@ defmodule ExUnitJSON.Formatter do
 
   @doc false
   # Merges two JSON result documents (from separate umbrella app runs).
-  # Concatenates test arrays, sums summary counts, keeps latest seed.
+  # Concatenates test arrays, sums summary counts, keeps latest seed and hint.
   @spec merge_documents(map(), map()) :: map()
   defp merge_documents(existing, new) do
-    merged_tests = Map.get(existing, "tests", []) ++ Map.get(new, "tests", [])
-    merged_summary = merge_summaries(Map.get(existing, "summary", %{}), Map.get(new, "summary", %{}))
+    %{
+      "version" => Map.get(new, "version", 1),
+      "seed" => Map.get(new, "seed"),
+      "summary" => merge_summaries(Map.get(existing, "summary", %{}), Map.get(new, "summary", %{}))
+    }
+    |> merge_tests(existing, new)
+    |> merge_module_failures(existing, new)
+    |> merge_error_groups(existing, new)
+    |> merge_hint(existing, new)
+  end
 
-    merged =
-      %{
-        "version" => Map.get(new, "version", 1),
-        "seed" => Map.get(new, "seed"),
-        "summary" => merged_summary
-      }
-
-    merged = if merged_tests != [], do: Map.put(merged, "tests", merged_tests), else: merged
-
-    # Merge module_failures if present
-    existing_mf = Map.get(existing, "module_failures", [])
-    new_mf = Map.get(new, "module_failures", [])
-    merged = if existing_mf ++ new_mf != [], do: Map.put(merged, "module_failures", existing_mf ++ new_mf), else: merged
-
-    # Merge error_groups if present — regenerate from merged tests
-    existing_eg = Map.get(existing, "error_groups")
-    new_eg = Map.get(new, "error_groups")
-    merged = if existing_eg || new_eg do
-      all_groups = (existing_eg || []) ++ (new_eg || [])
-      Map.put(merged, "error_groups", all_groups)
-    else
-      merged
+  @spec merge_tests(map(), map(), map()) :: map()
+  defp merge_tests(doc, existing, new) do
+    case Map.get(existing, "tests", []) ++ Map.get(new, "tests", []) do
+      [] -> doc
+      tests -> Map.put(doc, "tests", tests)
     end
+  end
 
-    # Preserve hint from latest app if present
+  @spec merge_module_failures(map(), map(), map()) :: map()
+  defp merge_module_failures(doc, existing, new) do
+    case Map.get(existing, "module_failures", []) ++ Map.get(new, "module_failures", []) do
+      [] -> doc
+      mfs -> Map.put(doc, "module_failures", mfs)
+    end
+  end
+
+  # Collapses groups with the same pattern: sums count, keeps first example.
+  @spec merge_error_groups(map(), map(), map()) :: map()
+  defp merge_error_groups(doc, existing, new) do
+    case {Map.get(existing, "error_groups"), Map.get(new, "error_groups")} do
+      {nil, nil} ->
+        doc
+
+      {existing_eg, new_eg} ->
+        groups =
+          (existing_eg || [])
+          |> Kernel.++(new_eg || [])
+          |> Enum.group_by(&Map.get(&1, "pattern"))
+          |> Enum.map(fn {pattern, entries} ->
+            %{
+              "pattern" => pattern,
+              "count" => entries |> Enum.map(&Map.get(&1, "count", 0)) |> Enum.sum(),
+              "example" => entries |> hd() |> Map.get("example")
+            }
+          end)
+
+        Map.put(doc, "error_groups", groups)
+    end
+  end
+
+  @spec merge_hint(map(), map(), map()) :: map()
+  defp merge_hint(doc, existing, new) do
     case Map.get(new, "hint") || Map.get(existing, "hint") do
-      nil -> merged
-      hint -> Map.put(merged, "hint", hint)
+      nil -> doc
+      hint -> Map.put(doc, "hint", hint)
     end
   end
 
   @doc false
-  # Sums numeric fields across two summary maps.
+  # Sums numeric fields across two summary maps. Includes `filtered` when non-zero
+  # to match the convention in `build_summary`.
   @spec merge_summaries(map(), map()) :: map()
   defp merge_summaries(a, b) do
-    %{
+    base = %{
       "total" => Map.get(a, "total", 0) + Map.get(b, "total", 0),
       "passed" => Map.get(a, "passed", 0) + Map.get(b, "passed", 0),
       "failed" => Map.get(a, "failed", 0) + Map.get(b, "failed", 0),
@@ -245,6 +271,11 @@ defmodule ExUnitJSON.Formatter do
       "duration_us" => Map.get(a, "duration_us", 0) + Map.get(b, "duration_us", 0),
       "result" => merge_result(Map.get(a, "result", "passed"), Map.get(b, "result", "passed"))
     }
+
+    case Map.get(a, "filtered", 0) + Map.get(b, "filtered", 0) do
+      0 -> base
+      n -> Map.put(base, "filtered", n)
+    end
   end
 
   @doc false

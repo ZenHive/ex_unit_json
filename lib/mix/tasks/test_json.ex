@@ -121,8 +121,6 @@ defmodule Mix.Tasks.Test.Json do
 
   use Mix.Task
 
-  require Logger
-
   @cover_threshold_min 0.0
   @cover_threshold_max 100.0
   @cover_threshold_exit_code 2
@@ -203,11 +201,26 @@ defmodule Mix.Tasks.Test.Json do
   @doc false
   # Clears the output file at the start of a run so the formatter can distinguish
   # "file from an earlier app in this umbrella run" from "stale file from a previous run".
+  # Surfaces non-:enoent errors so a locked/unwritable path fails loudly instead of
+  # being masked by the later merge path reading stale content.
   @spec maybe_clear_output_file(keyword()) :: :ok
   defp maybe_clear_output_file(opts) do
     case Keyword.get(opts, :output) do
-      nil -> :ok
-      path -> File.rm(path); :ok
+      nil ->
+        :ok
+
+      path ->
+        case File.rm(path) do
+          :ok ->
+            :ok
+
+          {:error, :enoent} ->
+            :ok
+
+          {:error, reason} ->
+            IO.puts(:stderr, "Warning: could not clear #{path}: #{:file.format_error(reason)}")
+            :ok
+        end
     end
   end
 
