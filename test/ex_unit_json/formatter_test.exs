@@ -534,6 +534,80 @@ defmodule ExUnitJSON.FormatterTest do
       File.rm!(output_file)
     end
 
+    test "merges results when output file already exists (umbrella support)" do
+      output_file = Path.join(System.tmp_dir!(), "merge_test_#{:rand.uniform(100_000)}.json")
+
+      # Simulate first app's suite writing to the file
+      Application.put_env(:ex_unit_json, :opts, output: output_file, failures_only: false)
+      {:ok, pid1} = Formatter.start_link()
+
+      GenServer.cast(pid1, {:suite_started, seed: 100})
+      GenServer.cast(pid1, {:test_finished, build_test(name: :"app_a test one", state: nil)})
+      GenServer.cast(pid1, {:test_finished, build_test(name: :"app_a test two", state: nil)})
+      GenServer.cast(pid1, {:suite_finished, %{async: 1000, sync: 500}})
+      GenServer.call(pid1, :get_state)
+      GenServer.stop(pid1)
+
+      # Simulate second app's suite writing to the same file
+      Application.put_env(:ex_unit_json, :opts, output: output_file, failures_only: false)
+      {:ok, pid2} = Formatter.start_link()
+
+      GenServer.cast(pid2, {:suite_started, seed: 200})
+      GenServer.cast(pid2, {:test_finished, build_test(name: :"app_b test one", state: nil)})
+      GenServer.cast(pid2, {:suite_finished, %{async: 2000, sync: 0}})
+      GenServer.call(pid2, :get_state)
+      GenServer.stop(pid2)
+
+      {:ok, content} = File.read(output_file)
+      json = :json.decode(content)
+
+      # Summary should be merged (2 + 1 = 3 tests)
+      assert json["summary"]["total"] == 3
+      assert json["summary"]["passed"] == 3
+      assert json["summary"]["duration_us"] == 1500 + 2000
+
+      # Tests array should contain all 3 tests
+      assert length(json["tests"]) == 3
+
+      # Seed from last app should be used
+      assert json["seed"] == 200
+
+      File.rm!(output_file)
+    end
+
+    test "merge preserves failed result when any app has failures" do
+      output_file = Path.join(System.tmp_dir!(), "merge_fail_#{:rand.uniform(100_000)}.json")
+
+      # First app: passing
+      Application.put_env(:ex_unit_json, :opts, output: output_file, failures_only: false)
+      {:ok, pid1} = Formatter.start_link()
+      GenServer.cast(pid1, {:suite_started, seed: 1})
+      GenServer.cast(pid1, {:test_finished, build_test(name: :passing, state: nil)})
+      GenServer.cast(pid1, {:suite_finished, %{async: 0, sync: 100}})
+      GenServer.call(pid1, :get_state)
+      GenServer.stop(pid1)
+
+      # Second app: has a failure
+      error = %RuntimeError{message: "boom"}
+      Application.put_env(:ex_unit_json, :opts, output: output_file, failures_only: false)
+      {:ok, pid2} = Formatter.start_link()
+      GenServer.cast(pid2, {:suite_started, seed: 2})
+      GenServer.cast(pid2, {:test_finished, build_test(name: :failing, state: {:failed, [{:error, error, []}]})})
+      GenServer.cast(pid2, {:suite_finished, %{async: 0, sync: 200}})
+      GenServer.call(pid2, :get_state)
+      GenServer.stop(pid2)
+
+      {:ok, content} = File.read(output_file)
+      json = :json.decode(content)
+
+      assert json["summary"]["total"] == 2
+      assert json["summary"]["passed"] == 1
+      assert json["summary"]["failed"] == 1
+      assert json["summary"]["result"] == "failed"
+
+      File.rm!(output_file)
+    end
+
     test "outputs to stdout when no output file specified" do
       # Use file output for testing to avoid polluting test output.
       # The stdout code path is implicitly tested via `mix test.json`.

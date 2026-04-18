@@ -162,9 +162,23 @@ defmodule ExUnitJSON.Formatter do
   end
 
   # sobelow_skip ["Traversal.FileModule"]
-  # Safe: path comes from CLI --output flag, controlled by user running the command
+  # Safe: path comes from CLI --output flag, controlled by user running the command.
+  # In umbrella projects, multiple apps write to the same file within one task run.
+  # The task clears the file at the start, so any existing content is from an earlier
+  # app in this run. Merge results instead of overwriting.
   defp write_output(output, path) when is_binary(path) do
-    case File.write(path, output) do
+    final_output =
+      case File.read(path) do
+        {:ok, existing} when byte_size(existing) > 0 ->
+          existing_doc = :json.decode(existing)
+          new_doc = :json.decode(IO.iodata_to_binary(output))
+          :json.encode(merge_documents(existing_doc, new_doc))
+
+        _ ->
+          output
+      end
+
+    case File.write(path, final_output) do
       :ok ->
         :ok
 
@@ -177,6 +191,99 @@ defmodule ExUnitJSON.Formatter do
         :ok
     end
   end
+
+  @doc false
+  # Merges two JSON result documents (from separate umbrella app runs).
+  # Concatenates test arrays, sums summary counts, keeps latest seed and hint.
+  @spec merge_documents(map(), map()) :: map()
+  defp merge_documents(existing, new) do
+    %{
+      "version" => Map.get(new, "version", 1),
+      "seed" => Map.get(new, "seed"),
+      "summary" => merge_summaries(Map.get(existing, "summary", %{}), Map.get(new, "summary", %{}))
+    }
+    |> merge_tests(existing, new)
+    |> merge_module_failures(existing, new)
+    |> merge_error_groups(existing, new)
+    |> merge_hint(existing, new)
+  end
+
+  @spec merge_tests(map(), map(), map()) :: map()
+  defp merge_tests(doc, existing, new) do
+    case Map.get(existing, "tests", []) ++ Map.get(new, "tests", []) do
+      [] -> doc
+      tests -> Map.put(doc, "tests", tests)
+    end
+  end
+
+  @spec merge_module_failures(map(), map(), map()) :: map()
+  defp merge_module_failures(doc, existing, new) do
+    case Map.get(existing, "module_failures", []) ++ Map.get(new, "module_failures", []) do
+      [] -> doc
+      mfs -> Map.put(doc, "module_failures", mfs)
+    end
+  end
+
+  # Collapses groups with the same pattern: sums count, keeps first example.
+  @spec merge_error_groups(map(), map(), map()) :: map()
+  defp merge_error_groups(doc, existing, new) do
+    case {Map.get(existing, "error_groups"), Map.get(new, "error_groups")} do
+      {nil, nil} ->
+        doc
+
+      {existing_eg, new_eg} ->
+        groups =
+          (existing_eg || [])
+          |> Kernel.++(new_eg || [])
+          |> Enum.group_by(&Map.get(&1, "pattern"))
+          |> Enum.map(fn {pattern, entries} ->
+            %{
+              "pattern" => pattern,
+              "count" => entries |> Enum.map(&Map.get(&1, "count", 0)) |> Enum.sum(),
+              "example" => entries |> hd() |> Map.get("example")
+            }
+          end)
+
+        Map.put(doc, "error_groups", groups)
+    end
+  end
+
+  @spec merge_hint(map(), map(), map()) :: map()
+  defp merge_hint(doc, existing, new) do
+    case Map.get(new, "hint") || Map.get(existing, "hint") do
+      nil -> doc
+      hint -> Map.put(doc, "hint", hint)
+    end
+  end
+
+  @doc false
+  # Sums numeric fields across two summary maps. Includes `filtered` when non-zero
+  # to match the convention in `build_summary`.
+  @spec merge_summaries(map(), map()) :: map()
+  defp merge_summaries(a, b) do
+    base = %{
+      "total" => Map.get(a, "total", 0) + Map.get(b, "total", 0),
+      "passed" => Map.get(a, "passed", 0) + Map.get(b, "passed", 0),
+      "failed" => Map.get(a, "failed", 0) + Map.get(b, "failed", 0),
+      "skipped" => Map.get(a, "skipped", 0) + Map.get(b, "skipped", 0),
+      "excluded" => Map.get(a, "excluded", 0) + Map.get(b, "excluded", 0),
+      "invalid" => Map.get(a, "invalid", 0) + Map.get(b, "invalid", 0),
+      "duration_us" => Map.get(a, "duration_us", 0) + Map.get(b, "duration_us", 0),
+      "result" => merge_result(Map.get(a, "result", "passed"), Map.get(b, "result", "passed"))
+    }
+
+    case Map.get(a, "filtered", 0) + Map.get(b, "filtered", 0) do
+      0 -> base
+      n -> Map.put(base, "filtered", n)
+    end
+  end
+
+  @doc false
+  # If either suite failed, the merged result is failed.
+  @spec merge_result(String.t(), String.t()) :: String.t()
+  defp merge_result("failed", _), do: "failed"
+  defp merge_result(_, "failed"), do: "failed"
+  defp merge_result(a, _), do: a
 
   @doc false
   # Builds the complete JSON document from accumulated state.
