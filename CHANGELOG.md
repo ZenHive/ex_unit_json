@@ -4,6 +4,29 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.4.2 (2026-04-18)
+
+### New Features
+
+**Umbrella project support**
+
+`mix test.json` now produces a single merged JSON document when run from an umbrella project root. Previously, each child app's `suite_finished` overwrote the output file, so only the last app's results survived.
+
+The Mix task clears the output file at the start of the run; the formatter detects existing content and merges documents. Tests arrays concatenate, summary counts sum, `result` stays `"failed"` if any app failed, and `--group-by-error` collapses duplicate patterns across apps (summing counts, keeping the first example). `--filter-out` counts survive the merge.
+
+Contributed by @talkingdonkeyz (PR #1).
+
+### Internal
+
+- `merge_documents/2` refactored to a pipeline matching `build_document/3`
+- `maybe_clear_output_file/1` surfaces non-`:enoent` errors instead of swallowing them silently
+- `ExUnitJSON.Config` typespecs now include `:quiet` and `:hint`
+- Docs polish: README `--compact` flag row, moduledoc `Mix.Tasks.Test.Json` listing
+- Dep bumps: `dialyzer_json ~> 0.2`, `credo 1.7.18` (1.7.16 crashes parsing regex sigils on Elixir 1.20-rc)
+- Test fixture: `test_apps/umbrella_app/` with two child apps, covered by a new integration test in `test/golden_test.exs`
+
+---
+
 ## v0.4.1 (2026-02-04)
 
 ### Breaking Changes

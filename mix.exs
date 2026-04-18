@@ -40,7 +40,7 @@ defmodule ExUnitJSON.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:dialyzer_json, "~> 0.1.0", only: [:dev, :test], runtime: false},
+      {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
       {:tidewave, "~> 0.5", only: :dev},
       {:bandit, "~> 1.0", only: :dev},
       {:styler, "~> 1.0", only: [:dev, :test], runtime: false},
@@ -51,7 +51,7 @@ defmodule ExUnitJSON.MixProject do
   defp aliases do
     [
       tidewave: [
-        "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4001) end)'"
+        "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4004) end)'"
       ]
     ]
   end

@@ -24,7 +24,7 @@ Add `ex_unit_json` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ex_unit_json, "~> 0.4.0", only: [:dev, :test], runtime: false}
+    {:ex_unit_json, "~> 0.4", only: [:dev, :test], runtime: false}
   ]
 end
 ```
@@ -67,6 +67,7 @@ mix test.json --quiet --all
 | `--group-by-error` | Group failures by similar error message |
 | `--output FILE` | Write JSON to file instead of stdout |
 | `--cover` | Enable code coverage |
+| `--compact` | Output JSONL with minimal keys (compact format) |
 | `--cover-threshold N` | Fail if coverage below N% (requires `--cover`) |
 | `--no-warn` | Suppress the "use --failed" tip |
 

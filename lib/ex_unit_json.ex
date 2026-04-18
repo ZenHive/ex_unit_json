@@ -13,7 +13,7 @@ defmodule ExUnitJSON do
   - **Coverage gating** with `--cover-threshold N` (fails if overall coverage drops below N)
   - All test states: passed, failed, skipped, excluded
   - Detailed failure information with assertion values and stacktraces
-  - Filtering options: `--summary-only`, `--all`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`
+  - Filtering options: `--summary-only`, `--all`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`, `--compact`
   - File output: `--output results.json`
   - Deterministic test ordering for reproducible output
   - No runtime dependencies (uses Elixir 1.18+ built-in `:json`)
@@ -24,7 +24,7 @@ defmodule ExUnitJSON do
 
       def deps do
         [
-          {:ex_unit_json, "~> 0.4.0", only: [:dev, :test], runtime: false}
+          {:ex_unit_json, "~> 0.4", only: [:dev, :test], runtime: false}
         ]
       end
 
@@ -91,6 +91,9 @@ defmodule ExUnitJSON do
 
       # Fail if overall coverage drops below threshold (requires --cover)
       mix test.json --quiet --cover --cover-threshold 80
+
+      # Output JSONL with minimal keys (compact format)
+      mix test.json --quiet --compact
 
   All standard `mix test` options are also supported (file paths, line numbers, etc.).
 
@@ -413,6 +416,7 @@ defmodule ExUnitJSON do
     * `ExUnitJSON.ErrorGroups` - Groups failures by error message
     * `ExUnitJSON.Coverage` - Code coverage collection
     * `ExUnitJSON.CompactOutput` - Compact JSONL output format
+    * `Mix.Tasks.Test.Json` - Mix task entry point (`mix test.json`)
 
   ## Requirements
 

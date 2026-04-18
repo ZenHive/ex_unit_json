@@ -74,15 +74,15 @@ mix test.json [flags]
 
 `Mix.Tasks.Test.Json` and `ExUnitJSON.Coverage` are tested via subprocess integration tests (`System.cmd`), so Erlang's `:cover` can't track their execution. They're excluded in `mix.exs` `test_coverage/0`.
 
-@include ~/.claude/includes/across-instances.md
-@include ~/.claude/includes/critical-rules.md
-@include ~/.claude/includes/task-prioritization.md
-@include ~/.claude/includes/task-writing.md
-@include ~/.claude/includes/web-command.md
-@include ~/.claude/includes/code-style.md
-@include ~/.claude/includes/development-philosophy.md
-@include ~/.claude/includes/documentation-guidelines.md
-@include ~/.claude/includes/api-integration.md
-@include ~/.claude/includes/development-commands.md
-@include ~/.claude/includes/elixir-patterns.md
-@include ~/.claude/includes/library-design.md
+@~/.claude/includes/across-instances.md
+@~/.claude/includes/critical-rules.md
+@~/.claude/includes/task-prioritization.md
+@~/.claude/includes/task-writing.md
+@~/.claude/includes/workflow-philosophy.md
+@~/.claude/includes/web-command.md
+@~/.claude/includes/elixir-setup.md
+@~/.claude/includes/ex-unit-json.md
+@~/.claude/includes/dialyzer-json.md
+@~/.claude/includes/code-style.md
+@~/.claude/includes/development-commands.md
+@~/.claude/includes/development-philosophy.md

@@ -15,12 +15,22 @@ defmodule ExUnitJSON.Config do
     * `:output` - File path to write JSON output (default: stdout)
     * `:compact` - When true, output JSONL with minimal fields
     * `:group_by_error` - When true, add error_groups array grouping failures by message
+    * `:quiet` - When true, suppress Logger output for clean JSON
+    * `:hint` - Controls the "use --failed" tip behavior
 
   """
 
   @typedoc "Valid option keys for ExUnitJSON configuration"
   @type option ::
-          :summary_only | :failures_only | :first_failure | :filter_out | :output | :compact | :group_by_error
+          :summary_only
+          | :failures_only
+          | :first_failure
+          | :filter_out
+          | :output
+          | :compact
+          | :group_by_error
+          | :quiet
+          | :hint
 
   @typedoc "Keyword list of ExUnitJSON options"
   @type opts :: [
@@ -30,7 +40,9 @@ defmodule ExUnitJSON.Config do
           filter_out: [String.t()],
           output: String.t() | nil,
           compact: boolean(),
-          group_by_error: boolean()
+          group_by_error: boolean(),
+          quiet: boolean(),
+          hint: boolean()
         ]
 
   @valid_options [
