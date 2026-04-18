@@ -170,8 +170,8 @@ Features added to improve AI agent usability:
 
 ### Completed
 
-#### Umbrella Project Support ✅ [D:3/B:7 → 2.3] (v0.4.2)
-`mix test.json` from an umbrella root produces a single merged document instead of being overwritten by the last child's suite. See [CHANGELOG.md](CHANGELOG.md#v042-2026-04-18). Contributed by @talkingdonkeyz (PR #1).
+#### Umbrella Project Support ✅ [D:3/B:7 → 2.3] (v0.4.3)
+`mix test.json` from an umbrella root produces a single merged document instead of being overwritten by the last child's suite. See [CHANGELOG.md](CHANGELOG.md#v043-2026-04-18). Contributed by @talkingdonkeyz (PR #1).
 
 #### Default to Failures-Only Output ✅ [D:3/B:9 → 3.0] (v0.3.0)
 Breaking change: `mix test.json` now outputs only failed tests by default. Use `--all` to include passing tests. Optimized for AI agents where passing tests are noise.

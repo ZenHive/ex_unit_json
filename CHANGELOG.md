@@ -4,7 +4,11 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
-## v0.4.2 (2026-04-18)
+## v0.4.3 (2026-04-18)
+
+> Note: v0.4.2 was published to Hex on 2026-02-28 from an out-of-tree state and
+> is not reflected in this repository's git history. v0.4.3 is the next
+> publishable slot.
 
 ### New Features
 
