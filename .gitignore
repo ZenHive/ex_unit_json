@@ -28,3 +28,6 @@ ex_unit_json-*.tar
 # Hex docs cache
 /.hex-docs/
 
+# Personal/local Claude Code settings (project-scope .mcp.json stays tracked).
+/.claude/settings.local.json
+

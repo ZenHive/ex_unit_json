@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ExUnitJSON (v0.4.1) is an Elixir library published to Hex.pm that provides AI-friendly JSON test output for ExUnit. It's a drop-in replacement for `mix test` via `mix test.json`, outputting structured JSON for AI editors like Claude Code. No runtime dependencies — uses Elixir 1.18+ built-in `:json` module.
+ExUnitJSON (v0.4.3) is an Elixir library published to Hex.pm that provides AI-friendly JSON test output for ExUnit. It's a drop-in replacement for `mix test` via `mix test.json`, outputting structured JSON for AI editors like Claude Code. No runtime dependencies — uses Elixir 1.18+ built-in `:json` module.
 
 ## Commands
 
@@ -74,15 +74,13 @@ mix test.json [flags]
 
 `Mix.Tasks.Test.Json` and `ExUnitJSON.Coverage` are tested via subprocess integration tests (`System.cmd`), so Erlang's `:cover` can't track their execution. They're excluded in `mix.exs` `test_coverage/0`.
 
-@~/.claude/includes/across-instances.md
+<!--
+  Selective-load (Opus 4.8): Elixir Library template = floor only.
+  Everything else (elixir-setup, ex-unit-json, dialyzer-json, code-style,
+  development-commands/-philosophy, task-prioritization/-writing, workflow-philosophy,
+  web-command) is skill-on-demand via the elixir / task-driver / dev-lifecycle plugins.
+  Not a delegation repo (no Codex/Cursor) and not a presence repo — so delegation-rules
+  and across-instances are intentionally omitted. Re-add an @-import only if Opus
+  starts failing on that surface. See ~/.claude/setup-guide.md.
+-->
 @~/.claude/includes/critical-rules.md
-@~/.claude/includes/task-prioritization.md
-@~/.claude/includes/task-writing.md
-@~/.claude/includes/workflow-philosophy.md
-@~/.claude/includes/web-command.md
-@~/.claude/includes/elixir-setup.md
-@~/.claude/includes/ex-unit-json.md
-@~/.claude/includes/dialyzer-json.md
-@~/.claude/includes/code-style.md
-@~/.claude/includes/development-commands.md
-@~/.claude/includes/development-philosophy.md
