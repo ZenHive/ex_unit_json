@@ -35,16 +35,16 @@ defmodule ExUnitJSON.MixProject do
 
   defp deps do
     [
-      # Dev/Test
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
-      {:dialyzer_json, "~> 0.2", only: [:dev, :test], runtime: false},
-      {:tidewave, "~> 0.5", only: :dev},
-      {:bandit, "~> 1.0", only: :dev},
-      {:styler, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:doctor, "~> 0.22.0", only: :dev, runtime: false}
+      # Dev/Test (pinned to current latest)
+      {:ex_doc, "~> 0.40.3", only: :dev, runtime: false},
+      {:credo, "~> 1.7.18", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
+      {:dialyzer_json, "~> 0.2.0", only: [:dev, :test], runtime: false},
+      {:tidewave, "~> 0.5.6", only: :dev},
+      {:bandit, "~> 1.11.1", only: :dev},
+      {:styler, "~> 1.11.0", only: [:dev, :test], runtime: false},
+      {:doctor, "~> 0.23.0", only: :dev, runtime: false}
     ]
   end
 

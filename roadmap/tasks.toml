@@ -1,0 +1,455 @@
+schema_version = 2
+project = "ex_unit_json"
+default_branch = "development"
+vision = "AI-friendly JSON test output for ExUnit — a drop-in 'mix test.json' that lets AI editors parse and reason about test results without grep/tail/sed."
+
+[focus]
+phase = 2
+
+[phases.1]
+name = "MVP Core Features"
+order = 1
+status = "done"
+
+[phases.2]
+name = "Future Enhancements"
+order = 2
+status = "in_progress"
+
+[bundles.core]
+phase = 1
+order = 1
+description = "Core JSON formatter — encoders, GenServer, mix task, filtering, output"
+
+[bundles.ai_output]
+phase = 1
+order = 2
+description = "AI-friendly output refinements (relative paths, truncation, --compact)"
+
+[bundles.output_fields]
+phase = 2
+order = 1
+description = "Output filtering, iteration & fields"
+
+[bundles.failed_iteration]
+phase = 2
+order = 2
+description = "Failed-test iteration UX"
+
+[bundles.error_grouping]
+phase = 2
+order = 3
+description = "Failure grouping & classification"
+
+[bundles.infrastructure]
+phase = 2
+order = 4
+description = "Coverage & umbrella support"
+
+[bundles.future]
+phase = 2
+order = 5
+description = "Backlog — unscored future ideas (scores estimated during migration)"
+
+# ---------------------------------------------------------------------------
+# Phase 1 — MVP Core Features (all shipped in the v0.1.x line)
+# ---------------------------------------------------------------------------
+
+[[task]]
+id = 1
+phase = 1
+bundle = "core"
+status = "done"
+title = "Project structure setup"
+body = "Create directories and stub modules for the formatter, encoder, config, and mix task."
+implemented = "All directories and stub files created; mix compile + mix test green. See CHANGELOG Task 1."
+scores = { d = 1, b = 6, u = 6 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "All directories and stub files created",
+  "mix compile succeeds",
+  "mix test passes",
+]
+
+[[task]]
+id = 2
+phase = 1
+bundle = "core"
+status = "done"
+title = "JSON encoder — basic test serialization"
+body = "Serialize ExUnit test states to JSON-serializable maps with filtered tags."
+implemented = "Encodes all test states to plain maps; internal tag keys filtered; state mapping nil→passed, {:failed,_}→failed, etc. Non-serializable values fall back to inspect/1. See CHANGELOG Task 2."
+scores = { d = 3, b = 8, u = 8 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "All test states correctly encoded",
+  "Tags properly filtered (no internal keys exposed)",
+  "Output is JSON-serializable (no structs, PIDs, etc.)",
+  "State mapping documented",
+  "Truncation policy: non-serializable values use inspect/1",
+]
+
+[[task]]
+id = 3
+phase = 1
+bundle = "core"
+status = "done"
+title = "JSON encoder — failure serialization"
+body = "Serialize all failure types with structured stacktrace frames and assertion left/right values."
+implemented = "Failure types serialized with structured stacktrace frames, assertion left/right/expr, 10,000 char truncation. See CHANGELOG Task 3."
+scores = { d = 4, b = 8, u = 8 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "All failure types correctly serialized",
+  "Assertion left/right values captured",
+  "Stacktraces include file/line info as structured frames",
+  "Output remains valid JSON",
+  "Truncation policy respected (10,000 char limit)",
+]
+
+[[task]]
+id = 4
+phase = 1
+bundle = "core"
+status = "done"
+title = "Formatter GenServer — event collection"
+body = "Accumulate ExUnit formatter events in a GenServer, preserving order."
+implemented = "GenServer accumulates ExUnit events in deterministic order; option plumbing centralized in ExUnitJSON.Config. See CHANGELOG Task 4."
+scores = { d = 3, b = 8, u = 8 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "GenServer starts successfully",
+  "All events properly accumulated",
+  "State maintains correct order",
+  "No crashes on unexpected events",
+  "Option plumbing uses centralized ExUnitJSON.Config",
+]
+
+[[task]]
+id = 5
+phase = 1
+bundle = "core"
+status = "done"
+title = "Formatter GenServer — JSON output"
+body = "Emit a complete JSON document on suite_finished with accurate summary statistics."
+implemented = "Emits a complete JSON document on suite_finished with accurate summary and version field; tests array deterministically ordered; summary reflects full suite even when tests are filtered. See CHANGELOG Task 5."
+scores = { d = 3, b = 8, u = 8 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "Complete JSON document output on suite finish",
+  "Summary statistics accurate",
+  "Version field present for future compatibility",
+  "Summary reflects full suite even when tests are filtered",
+  "Tests array order is deterministic",
+]
+
+[[task]]
+id = 6
+phase = 1
+bundle = "core"
+status = "done"
+title = "Mix task — basic implementation"
+body = "Provide 'mix test.json' delegating to 'mix test' with the JSON formatter."
+implemented = "mix test.json delegates to mix test with the formatter; passes through file/line args; exit codes preserved; options validated via ExUnitJSON.Config. See CHANGELOG Task 6."
+scores = { d = 3, b = 8, u = 8 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "mix test.json produces JSON output",
+  "All mix test arguments supported (files, line numbers)",
+  "Exit code 0 on pass, non-zero on failure",
+  "mix help test.json shows documentation",
+  "Options validated via ExUnitJSON.Config",
+]
+
+[[task]]
+id = 7
+phase = 1
+bundle = "core"
+status = "done"
+title = "Filtering options (--summary-only / --failures-only)"
+body = "Add --summary-only and --failures-only flags; summary always reflects the full suite."
+implemented = "--summary-only and --failures-only flags, combinable; summary always reflects the full suite regardless of filters. See CHANGELOG Task 7."
+scores = { d = 2, b = 7, u = 7 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "mix test.json --summary-only outputs only summary",
+  "mix test.json --failures-only outputs only failed tests",
+  "Flags can be combined",
+  "Summary reflects full suite regardless of filters",
+]
+
+[[task]]
+id = 8
+phase = 1
+bundle = "core"
+status = "done"
+title = "Output file option & polish"
+body = "Add --output, complete README/CHANGELOG, and document + enforce JSON Schema v1."
+implemented = "--output flag; README + CHANGELOG complete; hex.build succeeds; JSON Schema v1 documented and golden-tested. See CHANGELOG Task 8."
+scores = { d = 2, b = 7, u = 7 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "mix test.json --output results.json works",
+  "README complete with examples",
+  "CHANGELOG.md created",
+  "mix hex.build succeeds",
+  "JSON Schema v1 documented and tests validate against it",
+]
+
+# ---------------------------------------------------------------------------
+# Phase 1.5 (folded into Phase 1) — AI-Friendly Enhancements
+# ---------------------------------------------------------------------------
+
+[[task]]
+id = 9
+phase = 1
+bundle = "ai_output"
+status = "done"
+title = "Relative file paths"
+body = "Emit file paths relative to the project root (test/my_test.exs) instead of absolute paths."
+implemented = "File paths normalized relative to the project root."
+scores = { d = 2, b = 7, u = 7 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 10
+phase = 1
+bundle = "ai_output"
+status = "done"
+title = "Tighter truncation defaults"
+body = "Reduce truncation limits for assertion values (500 chars) to shrink output size."
+implemented = "Assertion value truncation reduced to 500 chars to reduce output size."
+scores = { d = 1, b = 6, u = 6 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 11
+phase = 1
+bundle = "ai_output"
+status = "done"
+title = "--compact JSONL output"
+body = "JSONL output with minimal keys (f=file:line, n=name, s=state, e=error message), one test per line, summary line at end. Dramatically reduces output size for large suites."
+implemented = "JSONL output with minimal keys f/n/s/e, one test per line plus a trailing summary line. See ExUnitJSON.CompactOutput."
+scores = { d = 3, b = 7, u = 7 }
+scored_at = "2026-05-31"
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Future Enhancements
+# ---------------------------------------------------------------------------
+
+# --- bundle: output_fields ---
+
+[[task]]
+id = 13
+phase = 2
+bundle = "output_fields"
+status = "done"
+title = "Default to failures-only output"
+body = "Default mix test.json to failures-only output (passing tests are noise for AI agents); add --all to include passing tests."
+implemented = "Breaking change: mix test.json outputs only failed tests by default; --all opts back into passing tests. Shipped v0.3.0."
+shipped_in = "v0.3.0"
+scores = { d = 3, b = 9, u = 9 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 17
+phase = 2
+bundle = "output_fields"
+status = "done"
+title = "--first-failure quick-iteration mode"
+body = "Output only the first failure in detail for quick iteration."
+implemented = "--first-failure outputs only the first failure in detail."
+scores = { d = 2, b = 5, u = 5 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 18
+phase = 2
+bundle = "output_fields"
+status = "done"
+title = "--filter-out 'pattern'"
+body = "Mark failures matching a pattern as filtered:true (e.g. missing credentials, rate limits) to focus on real bugs. Repeatable flag."
+implemented = "--filter-out marks matching failures filtered:true; repeatable across multiple patterns."
+scores = { d = 4, b = 8, u = 8 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 20
+phase = 2
+bundle = "output_fields"
+status = "pending"
+title = "Consistent failure_message field (Schema v2)"
+body = "Populate the top-level failure_message from failures[0].message when present (currently often null, forcing a drill into the failures array). SCHEMA CHANGE — requires a Schema v2 bump since v1 is already published. Update lib/ex_unit_json/json_encoder.ex, README, AGENT.md, and the global ex-unit-json include."
+scores = { d = 2, b = 7, u = 7 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "failure_message populated from failures[0].message when present",
+  "Schema version bumped to 2 with a CHANGELOG note",
+  "README + AGENT.md schema docs updated",
+]
+
+[[task]]
+id = 21
+phase = 2
+bundle = "output_fields"
+status = "pending"
+title = "--filter-in 'pattern'"
+body = "Inverse of --filter-out: only show failures matching a pattern, to focus on a specific error category."
+scores = { d = 2, b = 5, u = 5 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 22
+phase = 2
+bundle = "output_fields"
+status = "pending"
+title = "--min-duration MS filter"
+body = "Only output tests slower than N milliseconds — find slow tests for optimization."
+scores = { d = 2, b = 4, u = 4 }
+scored_at = "2026-05-31"
+
+# --- bundle: failed_iteration ---
+
+[[task]]
+id = 15
+phase = 2
+bundle = "failed_iteration"
+status = "done"
+title = "Warn-by-default for --failed usage"
+body = "When .mix_test_failures exists and running without --failed, show a tip suggesting focused options. Skip when --failed/file/dir/tag/--no-warn. Optional strict enforce_failed: true config."
+implemented = "Prints a TIP suggesting --failed when .mix_test_failures exists and --failed is not used; skipped for targeted/tag runs and --no-warn; optional enforce_failed config for strict enforcement."
+scores = { d = 3, b = 9, u = 9 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 16
+phase = 2
+bundle = "failed_iteration"
+status = "done"
+title = "Smart --failed hint"
+body = "Print a stderr hint suggesting --failed for faster iteration when .mix_test_failures exists; warn if the failures file is stale (>2 hours)."
+implemented = "Stderr hint suggests --failed when prior failures exist; warns when .mix_test_failures is older than 2 hours."
+scores = { d = 2, b = 6, u = 6 }
+scored_at = "2026-05-31"
+
+# --- bundle: error_grouping ---
+
+[[task]]
+id = 19
+phase = 2
+bundle = "error_grouping"
+status = "done"
+title = "--group-by-error"
+body = "Group failures by similar error message; surface root causes once via error_groups: [{pattern, count, example}]. Use case: 100 tests failing with one root cause show it once."
+implemented = "Groups failures by the first line of the error message into error_groups with pattern/count/example. See ExUnitJSON.ErrorGroups."
+scores = { d = 6, b = 7, u = 7 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 23
+phase = 2
+bundle = "error_grouping"
+status = "pending"
+title = "Error type classification"
+body = "Automatic categorization of failure types (error_type: assertion/crash/timeout/protocol_error; error_category extracted from message patterns) so AI can identify patterns without parsing messages. Schema change."
+scores = { d = 5, b = 6, u = 6 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "Each failure tagged with error_type (assertion/crash/timeout/protocol_error)",
+  "error_category extracted from message patterns where derivable",
+  "Schema version bumped with a CHANGELOG note",
+]
+
+[[task]]
+id = 24
+phase = 2
+bundle = "error_grouping"
+status = "pending"
+title = "--group-by TAG option"
+body = "Group failures by custom tags or module prefixes for large multi-service suites (e.g. --group-by-module-prefix). Output groups:{name:{total,failed,tests}}."
+scores = { d = 6, b = 6, u = 6 }
+scored_at = "2026-05-31"
+acceptance_criteria = [
+  "Failures grouped by a custom tag or module prefix via a flag",
+  "Each group reports total/failed counts plus its tests",
+  "Composes with existing filtering flags",
+]
+
+# --- bundle: infrastructure ---
+
+[[task]]
+id = 12
+phase = 2
+bundle = "infrastructure"
+status = "done"
+title = "Umbrella project support"
+body = "Make mix test.json from an umbrella root produce a single merged JSON document instead of being overwritten by the last child app's suite."
+implemented = "mix test.json from an umbrella root now produces a single merged document instead of last-child overwrite. Contributed by @talkingdonkeyz (PR #1). Shipped v0.4.3."
+delivered_by = "talkingdonkeyz"
+shipped_in = "v0.4.3 (PR #1)"
+scores = { d = 3, b = 7, u = 7 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 14
+phase = 2
+bundle = "infrastructure"
+status = "done"
+title = "Code coverage with --cover"
+body = "Coverage collection via --cover: JSON coverage object with total %, per-module %, and uncovered line numbers. --cover-threshold N fails the run below N%."
+implemented = "--cover collects per-module coverage with uncovered line numbers; --cover-threshold N fails below N%. See ExUnitJSON.Coverage. Shipped v0.4.0/v0.4.1."
+shipped_in = "v0.4.0 / v0.4.1"
+scores = { d = 5, b = 7, u = 7 }
+scored_at = "2026-05-31"
+
+# --- bundle: future (scores estimated during migration; not in source) ---
+
+[[task]]
+id = 25
+phase = 2
+bundle = "future"
+status = "pending"
+title = "--list flag for test discovery"
+body = "--list flag for test discovery without running the suite. Score estimated during migration (not scored in source)."
+scores = { d = 3, b = 5, u = 5 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 26
+phase = 2
+bundle = "future"
+status = "pending"
+title = "Captured logs inclusion (--include-logs)"
+body = "Optional --include-logs to embed captured logs in output. Score estimated during migration (not scored in source)."
+scores = { d = 4, b = 5, u = 5 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 27
+phase = 2
+bundle = "future"
+status = "pending"
+title = "CI systems integration"
+body = "Integration with CI systems (e.g. a GitHub Actions output format). Score estimated during migration (not scored in source)."
+scores = { d = 4, b = 5, u = 5 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 28
+phase = 2
+bundle = "future"
+status = "pending"
+title = "Custom output templates"
+body = "Custom output templates. Score estimated during migration (not scored in source)."
+scores = { d = 6, b = 4, u = 4 }
+scored_at = "2026-05-31"
+
+[[task]]
+id = 29
+phase = 2
+bundle = "future"
+status = "pending"
+title = "Optional Jason fallback"
+body = "Optional Jason fallback for Elixir versions without the built-in :json module. Score estimated during migration (not scored in source)."
+scores = { d = 4, b = 5, u = 5 }
+scored_at = "2026-05-31"
