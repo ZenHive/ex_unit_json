@@ -10,6 +10,7 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 
 - Drop-in replacement for `mix test` with JSON output
 - **AI-optimized default**: Shows only failures (use `--all` for all tests)
+- **Automatic retry-on-flaky** (default): re-runs failed tests once; failures that heal are reported as `flaky` instead of blocking (`--no-retry` to opt out)
 - **Code coverage** with `--cover` and **coverage gating** with `--cover-threshold N`
 - Detailed failure information with assertion values and stacktraces
 - Filtering: `--summary-only`, `--first-failure`, `--filter-out`, `--group-by-error`
@@ -70,8 +71,25 @@ mix test.json --quiet --all
 | `--compact` | Output JSONL with minimal keys (compact format) |
 | `--cover-threshold N` | Fail if coverage below N% (requires `--cover`) |
 | `--no-warn` | Suppress the "use --failed" tip |
+| `--no-retry` | Disable automatic retry of failed tests |
 
 All standard `mix test` flags are passed through (`--failed`, `--only`, `--exclude`, `--seed`, etc.).
+
+### Automatic Retry (Flaky Healing)
+
+When a run has failures, `mix test.json` re-runs only the previously-failed tests once and merges the results:
+
+- **confirmed** — failed both runs → stays red (`tests`), exits non-zero.
+- **flaky** — failed then passed → moved to a top-level `flaky` array (named, never hidden) and no longer blocks the run.
+
+When every first-run failure heals, `summary.result` is `"passed"` and the exit code is `0`, so an AI agent isn't blocked by an intermittent async/GenServer/LiveView failure — while each flaky test is still surfaced. A `retry` metadata object (`retried`/`confirmed`/`flaky`) is added when a retry runs.
+
+Retry is skipped for `--no-retry`, `config :ex_unit_json, retry: false`, `--failed`, `--summary-only`, `--first-failure`, `--compact`, `--group-by-error`, `--filter-out`, a `file:line` target, or umbrella projects. A green suite never triggers a second run.
+
+```elixir
+# Disable globally in config/test.exs
+config :ex_unit_json, retry: false
+```
 
 ### Code Coverage
 

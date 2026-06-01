@@ -698,6 +698,29 @@
       "body": "Optional Jason fallback for Elixir versions without the built-in :json module. Score estimated during migration (not scored in source).",
       "scored_at": "2026-05-31",
       "cross_repo": []
+    },
+    {
+      "id": 30,
+      "phase": 2,
+      "bundle": "failed_iteration",
+      "status": "done",
+      "title": "Automatic retry-on-flaky (default ON)",
+      "scores": {
+        "d": 7,
+        "b": 9,
+        "u": 9
+      },
+      "eff": 1.29,
+      "dep_layer": 0,
+      "markers": [],
+      "depends_on": [],
+      "body": "Agents run bare `mix test.json` and can't be forced to pass `--failed`, so a 1-2 red flake out of hundreds gets treated as a real regression. Make retry default behavior inside the task: on failures, re-run only the previously-failed tests (ExUnit `--failed`) in a subprocess, merge the two runs, classify confirmed (failed both) vs flaky (failed then passed). All-flaky heals to result=passed/exit 0 so the agent is unblocked; flaky tests are surfaced in a `flaky[]` array (never hidden, honors NEVER HIDE TEST FAILURES). Opt out via `--no-retry` / `config :ex_unit_json, retry: false`.",
+      "created_at": "2026-06-01",
+      "done_at": "2026-06-01",
+      "scored_at": "2026-06-01",
+      "implemented": "New ExUnitJSON.Retry.merge/2 overlays run-1 and the --failed --all retry subprocess, matching tests by {module,name}; adds top-level flaky[], summary.flaky, and a retry{} block (schema v1, additive). Heal-to-green forces exit 0 via System.halt(0); confirmed failures ride ExUnit's at_exit exit 2. Default ON; skipped for --no-retry/config, --failed, --summary-only, --first-failure, --compact, --group-by-error, --filter-out, file:line targets, and umbrella projects. Config.retry?/0 reads project config (default true). 12 unit + 4 integration tests, all green.",
+      "delivered_by": "claude",
+      "cross_repo": []
     }
   ]
 }

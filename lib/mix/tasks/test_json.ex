@@ -38,6 +38,7 @@ defmodule Mix.Tasks.Test.Json do
     * `--group-by-error` - Group failures by similar error message
     * `--quiet` - Suppress Logger output and TIP warnings for clean JSON piping
     * `--no-warn` - Suppress the "use --failed" warning when previous failures exist
+    * `--no-retry` - Disable automatic retry of failed tests (see "Automatic Retry")
     * `--cover` - Enable code coverage (off by default for faster runs)
     * `--cover-threshold N` - Fail if overall coverage is below N (0-100). Requires `--cover`
 
@@ -97,6 +98,38 @@ defmodule Mix.Tasks.Test.Json do
     * `--only` or `--exclude` tag filters are used
     * `--no-warn` flag is passed
 
+  ## Automatic Retry (v0.5.0+)
+
+  By **default**, when a run has failures, `mix test.json` automatically re-runs
+  only the previously-failed tests (ExUnit's native `--failed`) in a subprocess,
+  then merges the two runs to distinguish:
+
+    * **confirmed** failures — failed both runs. Stay in `tests`, stay red.
+    * **flaky** failures — failed run 1, passed run 2. Surfaced in a top-level
+      `flaky` array (never hidden) but no longer block the run.
+
+  When every first-run failure heals on retry, the suite reports
+  `summary.result == "passed"` and exits 0, so an AI agent isn't blocked by a
+  flake — while the flaky tests are still named in the output. A test that fails
+  both runs stays a hard failure (exit non-zero).
+
+  The merged output adds (only when a retry ran): a `flaky` array, a
+  `summary.flaky` count, and a `retry` metadata block. The schema `version`
+  stays `1` (additive).
+
+  Auto-retry is **skipped** (run-1 output is reported unchanged) when it would be
+  meaningless or unsupported: `--no-retry`, `config :ex_unit_json, retry: false`,
+  `--failed` (already iterating), `--summary-only`, `--first-failure`,
+  `--compact`, `--group-by-error`, `--filter-out`, a `file:line` target, or an
+  umbrella project.
+
+  Disable it entirely:
+
+      mix test.json --no-retry
+
+      # or in config/test.exs
+      config :ex_unit_json, retry: false
+
   ## Strict Enforcement
 
   To block full test runs when failures exist (useful for AI-assisted workflows):
@@ -139,6 +172,12 @@ defmodule Mix.Tasks.Test.Json do
     # Coverage is OFF by default, enable with --cover
     cover_enabled? = Keyword.get(opts, :cover, false)
 
+    # Decide auto-retry up front (drives temp buffering). Capture the user's
+    # passthrough args before coverage injects its own --exclude, so the retry
+    # subprocess re-runs with the same selection the user asked for.
+    retry_enabled? = retry_enabled?(opts, test_args)
+    passthrough_args = test_args
+
     # Ensure project is compiled before coverage instrumentation.
     # On clean builds, compile_project_modules() would otherwise find no beam files
     # because Mix.Task.run("test", ...) triggers compilation AFTER coverage starts.
@@ -146,15 +185,17 @@ defmodule Mix.Tasks.Test.Json do
 
     test_args = maybe_start_coverage(test_args, cover_enabled?)
 
-    # When coverage is enabled or --quiet is used, we need to buffer output to a temp file
-    # so we can merge coverage data into the JSON before final output
-    {opts, temp_output_path} = maybe_use_temp_output_for_coverage(opts, cover_enabled?)
+    # Buffer output to a temp file when we must post-process before final output:
+    # coverage merge, --quiet stdout hygiene, or auto-retry overlay.
+    {opts, temp_output_path} = maybe_use_temp_output(opts, cover_enabled?, retry_enabled?)
 
-    # Check if user should use --failed (warn by default, block if configured)
-    handle_failed_usage_check(opts, test_args)
+    # Check if user should use --failed (warn by default, block if configured).
+    # Auto-retry supersedes the manual hint, so the TIP is suppressed when on.
+    handle_failed_usage_check(opts, test_args, retry_enabled?)
 
-    # Compute hint for JSON output (suggests --failed when appropriate)
-    opts = maybe_add_hint_opt(opts, test_args)
+    # Compute hint for JSON output (suggests --failed when appropriate).
+    # Skipped when auto-retry is handling re-runs to avoid double-signalling.
+    opts = if retry_enabled?, do: opts, else: maybe_add_hint_opt(opts, test_args)
 
     # In umbrella projects, each app runs its own ExUnit suite, each triggering
     # suite_finished which writes to the output file. Clear the file at the start
@@ -171,28 +212,37 @@ defmodule Mix.Tasks.Test.Json do
     # as it uses mix test's native formatter handling.
     Mix.Task.run("test", ["--formatter", "ExUnitJSON.Formatter" | test_args])
 
-    # Handle coverage and output based on configuration
+    post_run(opts, cover_enabled?, retry_enabled?, temp_output_path, passthrough_args)
+  end
+
+  @doc false
+  # Dispatches to the retry overlay flow or the plain coverage/buffer flow.
+  @spec post_run(keyword(), boolean(), boolean(), String.t() | nil, [String.t()]) :: :ok
+  defp post_run(opts, cover_enabled?, true = _retry_enabled?, temp_output_path, passthrough_args) do
+    run_retry_flow(opts, cover_enabled?, temp_output_path, passthrough_args)
+  end
+
+  defp post_run(opts, cover_enabled?, false = _retry_enabled?, temp_output_path, _passthrough_args) do
+    finalize_without_retry(opts, cover_enabled?, temp_output_path)
+  end
+
+  @doc false
+  # The original (no-retry) coverage/buffer output handling.
+  # Note: we don't call Coverage.stop() here because :cover.stop() can kill
+  # processes that imported cover-compiled modules. The cover server is cleaned
+  # up when the process exits.
+  @spec finalize_without_retry(keyword(), boolean(), String.t() | nil) :: :ok
+  defp finalize_without_retry(opts, cover_enabled?, temp_output_path) do
     cond do
-      # Coverage enabled with temp buffer (stdout output)
       cover_enabled? and temp_output_path ->
         merge_coverage_into_output(temp_output_path, opts)
 
-      # Note: We don't call Coverage.stop() here because :cover.stop()
-      # can kill processes that imported cover-compiled modules.
-      # The cover server will be cleaned up when the process exits.
-
-      # Coverage enabled with explicit --output file
       cover_enabled? and Keyword.has_key?(opts, :output) ->
-        output_path = Keyword.get(opts, :output)
-        merge_coverage_into_file(output_path, opts)
+        merge_coverage_into_file(Keyword.get(opts, :output), opts)
 
-      # Same as above - skip stop() to avoid killing the process
-
-      # Temp buffer without coverage (just output it)
       temp_output_path ->
         output_buffered_json(temp_output_path)
 
-      # No temp buffer, no coverage - formatter already wrote output
       true ->
         :ok
     end
@@ -273,6 +323,10 @@ defmodule Mix.Tasks.Test.Json do
     extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
   end
 
+  defp extract_json_opts(["--no-retry" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:retry, false} | opts], remaining)
+  end
+
   defp extract_json_opts(["--cover" | rest], opts, remaining) do
     extract_json_opts(rest, [{:cover, true} | opts], remaining)
   end
@@ -323,9 +377,12 @@ defmodule Mix.Tasks.Test.Json do
   defp maybe_start_coverage(test_args, false = _cover_enabled?), do: test_args
 
   @doc false
-  # Checks failed usage and shows warning/error as appropriate
-  @spec handle_failed_usage_check(keyword(), [String.t()]) :: :ok
-  defp handle_failed_usage_check(opts, test_args) do
+  # Checks failed usage and shows warning/error as appropriate.
+  # The `{:warn, _}` TIP is suppressed when auto-retry is enabled (retry
+  # supersedes the manual --failed suggestion); the enforce_failed block always
+  # fires, since it is a deliberate stricter config independent of retry.
+  @spec handle_failed_usage_check(keyword(), [String.t()], boolean()) :: :ok
+  defp handle_failed_usage_check(opts, test_args, retry_enabled?) do
     quiet? = Keyword.get(opts, :quiet, false)
 
     case check_failed_usage(opts, test_args) do
@@ -348,7 +405,7 @@ defmodule Mix.Tasks.Test.Json do
 
         exit({:shutdown, 1})
 
-      {:warn, count} when not quiet? ->
+      {:warn, count} when not quiet? and not retry_enabled? ->
         other_args = Enum.join(test_args, " ")
 
         IO.puts(:stderr, """
@@ -499,17 +556,16 @@ defmodule Mix.Tasks.Test.Json do
   end
 
   @doc false
-  # When coverage is enabled or --quiet is used, buffer output to temp file.
-  # This allows merging coverage data into JSON before final output.
-  @spec maybe_use_temp_output_for_coverage(keyword(), boolean()) :: {keyword(), String.t() | nil}
-  defp maybe_use_temp_output_for_coverage(opts, cover_enabled?) do
-    quiet? = Keyword.get(opts, :quiet, false)
+  # Buffer output to a temp file when we must post-process before final output.
+  # Buffer when (and only when) no explicit --output was given AND any of:
+  #   1. Coverage is enabled (need to merge coverage data)
+  #   2. --quiet is used (avoid stdout pollution)
+  #   3. Auto-retry is enabled (need to read run-1 before deciding to re-run)
+  @spec maybe_use_temp_output(keyword(), boolean(), boolean()) :: {keyword(), String.t() | nil}
+  defp maybe_use_temp_output(opts, cover_enabled?, retry_enabled?) do
     has_output? = Keyword.has_key?(opts, :output)
-
-    # Buffer to temp file when:
-    # 1. Coverage is enabled (need to merge coverage data)
-    # 2. --quiet is used without explicit --output (avoid stdout pollution)
-    needs_temp_buffer? = (cover_enabled? and not has_output?) or (quiet? and not has_output?)
+    quiet? = Keyword.get(opts, :quiet, false)
+    needs_temp_buffer? = (cover_enabled? or quiet? or retry_enabled?) and not has_output?
 
     if needs_temp_buffer? do
       temp_path = Path.join(System.tmp_dir!(), "ex_unit_json_#{System.unique_integer([:positive])}.json")
@@ -517,6 +573,227 @@ defmodule Mix.Tasks.Test.Json do
     else
       {opts, nil}
     end
+  end
+
+  @doc false
+  # Decides whether to auto-retry failed tests. Default ON (project config +
+  # per-invocation opt both default true). Disabled when the manual `--failed`
+  # workflow is in play (also prevents the retry subprocess recursing), for
+  # output modes that strip the per-test data the merge needs (summary-only,
+  # first-failure, compact, group-by-error), when --filter-out provides an
+  # alternative flaky strategy, for a focused file:line target, or in umbrella
+  # projects (per-app suites + --failed interaction untested).
+  @spec retry_enabled?(keyword(), [String.t()]) :: boolean()
+  defp retry_enabled?(opts, test_args) do
+    ExUnitJSON.Config.retry?() and
+      Keyword.get(opts, :retry, true) and
+      not retry_disqualified_opts?(opts) and
+      not retry_disqualified_args?(test_args) and
+      not Mix.Project.umbrella?()
+  end
+
+  @doc false
+  @spec retry_disqualified_opts?(keyword()) :: boolean()
+  defp retry_disqualified_opts?(opts) do
+    Keyword.get(opts, :summary_only, false) or
+      Keyword.get(opts, :first_failure, false) or
+      Keyword.get(opts, :compact, false) or
+      Keyword.get(opts, :group_by_error, false) or
+      Keyword.has_key?(opts, :filter_out)
+  end
+
+  @doc false
+  @spec retry_disqualified_args?([String.t()]) :: boolean()
+  defp retry_disqualified_args?(test_args) do
+    "--failed" in test_args or Enum.any?(test_args, &String.contains?(&1, ".exs:"))
+  end
+
+  @doc false
+  # Orchestrates the retry overlay: read run 1, and if it has failures, re-run
+  # the failed subset in a subprocess and merge. Coverage (if enabled) is
+  # collected from run 1 only and re-attached to the final document.
+  @spec run_retry_flow(keyword(), boolean(), String.t() | nil, [String.t()]) :: :ok
+  defp run_retry_flow(opts, cover_enabled?, temp_output_path, passthrough_args) do
+    run1_path = temp_output_path || Keyword.get(opts, :output)
+    coverage = if cover_enabled?, do: collect_coverage_with_threshold(opts)
+
+    case read_document(run1_path) do
+      {:ok, run1_doc} ->
+        if document_has_failures?(run1_doc) do
+          retry_and_finalize(run1_doc, opts, coverage, temp_output_path, passthrough_args)
+        else
+          # Green run: no second run, emit run 1 (with coverage) unchanged.
+          finalize_document(run1_doc, opts, coverage, temp_output_path)
+        end
+
+      {:error, _} ->
+        # Run 1 produced no parseable output (e.g. tests crashed early).
+        # Fall back to the plain coverage/buffer path; never mask the failure.
+        finalize_without_retry(opts, cover_enabled?, temp_output_path)
+    end
+  end
+
+  @doc false
+  @spec retry_and_finalize(map(), keyword(), term(), String.t() | nil, [String.t()]) :: :ok
+  defp retry_and_finalize(run1_doc, opts, coverage, temp_output_path, passthrough_args) do
+    case run_retry_subprocess(passthrough_args) do
+      {:ok, run2_doc} ->
+        merged = ExUnitJSON.Retry.merge(run1_doc, run2_doc)
+        finalize_retry(merged, opts, coverage, temp_output_path)
+
+      :error ->
+        IO.puts(
+          :stderr,
+          "Warning: ex_unit_json retry pass produced no parseable output; reporting first-run results."
+        )
+
+        finalize_document(run1_doc, opts, coverage, temp_output_path)
+    end
+  end
+
+  @doc false
+  # Re-runs only the previously-failed tests in a fresh `mix test.json --failed`
+  # subprocess. ExUnit cannot run twice in one VM, so a subprocess is required.
+  # `--failed` keeps the retry from recursing (retry_enabled?/2 is false when
+  # --failed is present). `--all` makes run 2 report every re-run test's state.
+  @spec run_retry_subprocess([String.t()]) :: {:ok, map()} | :error
+  defp run_retry_subprocess(passthrough_args) do
+    tmp2 = Path.join(System.tmp_dir!(), "ex_unit_json_retry_#{System.unique_integer([:positive])}.json")
+    args = ["test.json", "--failed", "--all", "--output", tmp2 | passthrough_args]
+
+    {_output, _exit_code} =
+      System.cmd("mix", args, cd: File.cwd!(), stderr_to_stdout: true, env: [{"MIX_ENV", "test"}])
+
+    result = read_document(tmp2)
+    File.rm(tmp2)
+
+    case result do
+      {:ok, doc} -> {:ok, doc}
+      {:error, _} -> :error
+    end
+  end
+
+  @doc false
+  # Writes a single (non-merged) document — used for the green and fallback
+  # paths. Attaches coverage when present and applies the cover threshold.
+  @spec finalize_document(map(), keyword(), term(), String.t() | nil) :: :ok
+  defp finalize_document(doc, opts, coverage, temp_output_path) do
+    doc
+    |> maybe_attach_coverage(coverage)
+    |> write_final(opts, temp_output_path)
+
+    cleanup_temp(temp_output_path)
+    maybe_exit_for_coverage(coverage)
+    :ok
+  end
+
+  @doc false
+  # Writes the merged document, then decides the exit code. ExUnit's at_exit
+  # already yields a non-zero status because run 1 failed; the only override is
+  # heal-to-green (all failures flaky) with coverage passing, where we force
+  # exit 0 via System.halt/1 (bypasses at_exit, flushes stdout).
+  @spec finalize_retry(map(), keyword(), term(), String.t() | nil) :: :ok
+  defp finalize_retry(merged, opts, coverage, temp_output_path) do
+    merged
+    |> maybe_attach_coverage(coverage)
+    |> write_final(opts, temp_output_path)
+
+    cleanup_temp(temp_output_path)
+    maybe_halt_for_retry_result(merged, coverage)
+    :ok
+  end
+
+  @doc false
+  @spec maybe_attach_coverage(map(), term()) :: map()
+  defp maybe_attach_coverage(doc, nil), do: doc
+  defp maybe_attach_coverage(doc, {coverage, _threshold_met?}), do: Map.put(doc, "coverage", coverage)
+
+  @doc false
+  # Writes the final JSON to stdout (when buffered to temp) or to the user's
+  # explicit --output file (when no temp buffer was needed).
+  @spec write_final(map(), keyword(), String.t() | nil) :: :ok
+  defp write_final(doc, opts, nil) do
+    # sobelow_skip ["Traversal.FileModule"]
+    File.write!(Keyword.get(opts, :output), :json.encode(doc))
+  end
+
+  defp write_final(doc, _opts, _temp_output_path) do
+    IO.write(:json.encode(doc))
+  end
+
+  @doc false
+  @spec cleanup_temp(String.t() | nil) :: :ok
+  defp cleanup_temp(nil), do: :ok
+
+  defp cleanup_temp(path) do
+    File.rm(path)
+    :ok
+  end
+
+  @doc false
+  # For the green/fallback path: enforce the cover threshold if one was set.
+  @spec maybe_exit_for_coverage(term()) :: :ok
+  defp maybe_exit_for_coverage(nil), do: :ok
+  defp maybe_exit_for_coverage({coverage, threshold_met?}), do: maybe_exit_on_cover_threshold(threshold_met?, coverage)
+
+  @doc false
+  # Heal-to-green override. Coverage-below-threshold wins (report it; ExUnit's
+  # at_exit yields the non-zero status since run 1 failed). Otherwise, when the
+  # merged result is green, halt(0) to clear ExUnit's pending failure status.
+  @spec maybe_halt_for_retry_result(map(), term()) :: :ok
+  defp maybe_halt_for_retry_result(merged, coverage) do
+    if coverage_threshold_ok?(coverage) and get_in(merged, ["summary", "result"]) == "passed" do
+      System.halt(0)
+    end
+
+    :ok
+  end
+
+  @doc false
+  # Returns true when there is no threshold or it was met; emits the standard
+  # coverage error to stderr and returns false when the threshold was missed.
+  @spec coverage_threshold_ok?(term()) :: boolean()
+  defp coverage_threshold_ok?(nil), do: true
+  defp coverage_threshold_ok?({_coverage, nil}), do: true
+  defp coverage_threshold_ok?({_coverage, true}), do: true
+
+  defp coverage_threshold_ok?({coverage, false}) do
+    total = coverage["total_percentage"]
+    threshold = coverage["threshold"]
+    IO.puts(:stderr, "ERROR: Coverage #{total}% is below threshold #{threshold}%")
+    false
+  end
+
+  @doc false
+  # Reads and decodes a buffered JSON document. Returns {:error, _} when the
+  # file is missing, empty, or not valid JSON (so callers can fall back).
+  @spec read_document(String.t() | nil) :: {:ok, map()} | {:error, atom()}
+  defp read_document(nil), do: {:error, :no_path}
+
+  defp read_document(path) do
+    case File.read(path) do
+      {:ok, content} when byte_size(content) > 0 ->
+        try do
+          {:ok, :json.decode(content)}
+        rescue
+          _ -> {:error, :invalid_json}
+        end
+
+      _ ->
+        {:error, :no_output}
+    end
+  end
+
+  @doc false
+  # Detects failures from the summary (robust across --all / failures-only) plus
+  # any setup_all module failures.
+  @spec document_has_failures?(map()) :: boolean()
+  defp document_has_failures?(doc) do
+    summary = Map.get(doc, "summary", %{})
+
+    Map.get(summary, "failed", 0) > 0 or
+      Map.get(summary, "invalid", 0) > 0 or
+      Map.get(doc, "module_failures", []) != []
   end
 
   @doc false

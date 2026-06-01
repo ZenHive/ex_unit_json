@@ -9,6 +9,8 @@ defmodule ExUnitJSON do
 
   - Drop-in replacement for `mix test` with JSON output
   - **AI-optimized default**: Shows only failures (use `--all` for all tests)
+  - **Automatic retry-on-flaky** (default): failed tests are re-run once; failures
+    that heal are surfaced as `flaky` instead of blocking (opt out with `--no-retry`)
   - **Code coverage** available with `--cover` flag
   - **Coverage gating** with `--cover-threshold N` (fails if overall coverage drops below N)
   - All test states: passed, failed, skipped, excluded
@@ -95,7 +97,33 @@ defmodule ExUnitJSON do
       # Output JSONL with minimal keys (compact format)
       mix test.json --quiet --compact
 
+      # Disable automatic retry of failed tests
+      mix test.json --quiet --no-retry
+
   All standard `mix test` options are also supported (file paths, line numbers, etc.).
+
+  ## Automatic Retry (Flaky Healing)
+
+  By **default**, when a run has failures, `mix test.json` re-runs only the
+  previously-failed tests once (in a subprocess, using ExUnit's `--failed`) and
+  merges the results:
+
+  - **confirmed** — failed both runs → stays in `tests`, stays red, exits non-zero.
+  - **flaky** — failed then passed → moved to a top-level `flaky` array (never
+    hidden) and no longer blocks the run.
+
+  When every first-run failure heals, the result goes `"passed"` and the exit code
+  is `0`, so an AI agent isn't blocked by a flake — while each flaky test is still
+  named in the output. This is the fix for the common loop where an agent treats an
+  intermittent async/GenServer/LiveView failure as a real regression.
+
+  Retry is skipped (run-1 output reported unchanged) for `--no-retry`,
+  `config :ex_unit_json, retry: false`, `--failed`, `--summary-only`,
+  `--first-failure`, `--compact`, `--group-by-error`, `--filter-out`, a `file:line`
+  target, or umbrella projects. A green suite never triggers a second run.
+
+      # Disable globally in config/test.exs
+      config :ex_unit_json, retry: false
 
   ## Code Coverage
 
@@ -185,6 +213,8 @@ defmodule ExUnitJSON do
         "seed": 12345,
         "summary": { ... },
         "tests": [ ... ],
+        "flaky": [ ... ],
+        "retry": { ... },
         "error_groups": [ ... ],
         "module_failures": [ ... ]
       }
@@ -195,9 +225,34 @@ defmodule ExUnitJSON do
   | `seed` | integer | Random seed used for test ordering |
   | `summary` | object | Aggregate test statistics |
   | `tests` | array | Individual test results (omitted with `--summary-only`) |
+  | `flaky` | array | Tests that failed then passed on retry (only present when a retry healed something) |
+  | `retry` | object | Retry metadata (only present when a retry ran) |
   | `error_groups` | array | Failures grouped by message (only with `--group-by-error`) |
   | `module_failures` | array | setup_all failures (only present when failures occur) |
   | `coverage` | object | Code coverage data (included with `--cover`) |
+
+  ### Retry Object
+
+  Present only when an automatic retry ran (a first run had failures):
+
+      {
+        "ran": true,
+        "passes": 1,
+        "retried": 3,
+        "confirmed": 2,
+        "flaky": 1
+      }
+
+  | Field | Type | Description |
+  |-------|------|-------------|
+  | `ran` | boolean | Always `true` when present |
+  | `passes` | integer | Number of retry passes (currently always 1) |
+  | `retried` | integer | Number of failed tests re-run |
+  | `confirmed` | integer | Failures that recurred (still red) |
+  | `flaky` | integer | Failures that healed on retry |
+
+  The `flaky` array contains full test objects (run-1 failure detail preserved);
+  flaky module failures additionally carry `"scope": "module"`.
 
   ### Summary Object
 
@@ -209,6 +264,7 @@ defmodule ExUnitJSON do
         "excluded": 0,
         "invalid": 0,
         "filtered": 0,
+        "flaky": 0,
         "duration_us": 123456,
         "result": "failed"
       }
@@ -217,13 +273,14 @@ defmodule ExUnitJSON do
   |-------|------|-------------|
   | `total` | integer | Total number of tests |
   | `passed` | integer | Tests that passed |
-  | `failed` | integer | Tests that failed |
+  | `failed` | integer | Confirmed failures (after retry, if one ran) |
   | `skipped` | integer | Tests skipped with `@tag :skip` |
   | `excluded` | integer | Tests excluded by tag filters |
   | `invalid` | integer | Tests with invalid state |
   | `filtered` | integer | Failed tests matching `--filter-out` patterns (only present when non-zero) |
+  | `flaky` | integer | Failures that healed on retry (only present when a retry ran) |
   | `duration_us` | integer | Total duration in microseconds |
-  | `result` | string | `"passed"` or `"failed"` |
+  | `result` | string | `"passed"` or `"failed"` (`"passed"` when all failures healed) |
 
   ### Test Object
 
@@ -413,6 +470,7 @@ defmodule ExUnitJSON do
     * `ExUnitJSON.JSONEncoder` - Converts ExUnit structs to JSON maps
     * `ExUnitJSON.Config` - Configuration handling
     * `ExUnitJSON.Filters` - Test filtering logic
+    * `ExUnitJSON.Retry` - Merges a run with its retry to classify flaky vs confirmed
     * `ExUnitJSON.ErrorGroups` - Groups failures by error message
     * `ExUnitJSON.Coverage` - Code coverage collection
     * `ExUnitJSON.CompactOutput` - Compact JSONL output format

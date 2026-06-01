@@ -17,6 +17,7 @@ defmodule ExUnitJSON.Config do
     * `:group_by_error` - When true, add error_groups array grouping failures by message
     * `:quiet` - When true, suppress Logger output for clean JSON
     * `:hint` - Controls the "use --failed" tip behavior
+    * `:retry` - When false (via `--no-retry`), disable auto-retry of failed tests
 
   """
 
@@ -31,6 +32,7 @@ defmodule ExUnitJSON.Config do
           | :group_by_error
           | :quiet
           | :hint
+          | :retry
 
   @typedoc "Keyword list of ExUnitJSON options"
   @type opts :: [
@@ -42,7 +44,8 @@ defmodule ExUnitJSON.Config do
           compact: boolean(),
           group_by_error: boolean(),
           quiet: boolean(),
-          hint: boolean()
+          hint: boolean(),
+          retry: boolean()
         ]
 
   @valid_options [
@@ -54,7 +57,8 @@ defmodule ExUnitJSON.Config do
     :compact,
     :group_by_error,
     :quiet,
-    :hint
+    :hint,
+    :retry
   ]
 
   @doc """
@@ -155,6 +159,20 @@ defmodule ExUnitJSON.Config do
   @spec group_by_error?() :: boolean()
   def group_by_error? do
     get_opt(:group_by_error, false)
+  end
+
+  @doc """
+  Checks if automatic retry-on-flaky is enabled via project config.
+
+  Reads `config :ex_unit_json, :retry` directly from the application
+  environment (default `true`), mirroring how `:enforce_failed` is read. This
+  is a project-level setting evaluated before per-invocation `:opts` are stored,
+  so it deliberately does not consult `get_opts/0`. The `--no-retry` flag is
+  honored separately as a per-invocation opt by `Mix.Tasks.Test.Json`.
+  """
+  @spec retry?() :: boolean()
+  def retry? do
+    Application.get_env(:ex_unit_json, :retry, true)
   end
 
   @doc false
