@@ -608,6 +608,103 @@ defmodule ExUnitJSON.FormatterTest do
       File.rm!(output_file)
     end
 
+    test "umbrella merge with --first-failure keeps only one failure across apps" do
+      output_file = Path.join(System.tmp_dir!(), "merge_ff_#{:rand.uniform(100_000)}.json")
+      error = %RuntimeError{message: "boom"}
+
+      # First app: one failure (already capped to first failure by its own run)
+      Application.put_env(:ex_unit_json, :opts, output: output_file, first_failure: true)
+      {:ok, pid1} = Formatter.start_link()
+      GenServer.cast(pid1, {:suite_started, seed: 1})
+      GenServer.cast(pid1, {:test_finished, build_test(name: :app_a_fail, state: {:failed, [{:error, error, []}]})})
+      GenServer.cast(pid1, {:suite_finished, %{async: 0, sync: 100}})
+      GenServer.call(pid1, :get_state)
+      GenServer.stop(pid1)
+
+      # Second app: another failure
+      Application.put_env(:ex_unit_json, :opts, output: output_file, first_failure: true)
+      {:ok, pid2} = Formatter.start_link()
+      GenServer.cast(pid2, {:suite_started, seed: 2})
+      GenServer.cast(pid2, {:test_finished, build_test(name: :app_b_fail, state: {:failed, [{:error, error, []}]})})
+      GenServer.cast(pid2, {:suite_finished, %{async: 0, sync: 200}})
+      GenServer.call(pid2, :get_state)
+      GenServer.stop(pid2)
+
+      {:ok, content} = File.read(output_file)
+      json = :json.decode(content)
+
+      # --first-failure must hold across the merged document, not once per app
+      assert length(json["tests"]) == 1
+      assert hd(json["tests"])["name"] == "app_a_fail"
+
+      File.rm!(output_file)
+    end
+
+    test "umbrella merge with compact output concatenates JSONL instead of crashing" do
+      output_file = Path.join(System.tmp_dir!(), "merge_compact_#{:rand.uniform(100_000)}.jsonl")
+
+      # First app writes JSONL
+      Application.put_env(:ex_unit_json, :opts, output: output_file, compact: true, failures_only: false)
+      {:ok, pid1} = Formatter.start_link()
+      GenServer.cast(pid1, {:suite_started, seed: 1})
+      GenServer.cast(pid1, {:test_finished, build_test(name: :app_a_test, state: nil)})
+      GenServer.cast(pid1, {:suite_finished, %{async: 0, sync: 100}})
+      GenServer.call(pid1, :get_state)
+      GenServer.stop(pid1)
+
+      # Second app appends its JSONL — previously crashed on :json.decode of JSONL
+      Application.put_env(:ex_unit_json, :opts, output: output_file, compact: true, failures_only: false)
+      {:ok, pid2} = Formatter.start_link()
+      GenServer.cast(pid2, {:suite_started, seed: 2})
+      GenServer.cast(pid2, {:test_finished, build_test(name: :app_b_test, state: nil)})
+      GenServer.cast(pid2, {:suite_finished, %{async: 0, sync: 200}})
+      GenServer.call(pid2, :get_state)
+      GenServer.stop(pid2)
+
+      {:ok, content} = File.read(output_file)
+      lines = String.split(content, "\n", trim: true)
+
+      # 2 test lines + 2 summary lines (one per app), every line valid JSON
+      assert length(lines) == 4
+      Enum.each(lines, fn line -> assert is_map(:json.decode(line)) end)
+
+      File.rm!(output_file)
+    end
+
+    test "umbrella merge re-sorts error_groups by count descending" do
+      output_file = Path.join(System.tmp_dir!(), "merge_eg_#{:rand.uniform(100_000)}.json")
+      error_a = %RuntimeError{message: "rare error"}
+      error_b = %RuntimeError{message: "common error"}
+
+      # First app: one failure with the rare error
+      Application.put_env(:ex_unit_json, :opts, output: output_file, group_by_error: true)
+      {:ok, pid1} = Formatter.start_link()
+      GenServer.cast(pid1, {:suite_started, seed: 1})
+      GenServer.cast(pid1, {:test_finished, build_test(name: :a1, state: {:failed, [{:error, error_a, []}]})})
+      GenServer.cast(pid1, {:suite_finished, %{async: 0, sync: 100}})
+      GenServer.call(pid1, :get_state)
+      GenServer.stop(pid1)
+
+      # Second app: two failures with the common error — its group must sort first
+      Application.put_env(:ex_unit_json, :opts, output: output_file, group_by_error: true)
+      {:ok, pid2} = Formatter.start_link()
+      GenServer.cast(pid2, {:suite_started, seed: 2})
+      GenServer.cast(pid2, {:test_finished, build_test(name: :b1, state: {:failed, [{:error, error_b, []}]})})
+      GenServer.cast(pid2, {:test_finished, build_test(name: :b2, state: {:failed, [{:error, error_b, []}]})})
+      GenServer.cast(pid2, {:suite_finished, %{async: 0, sync: 200}})
+      GenServer.call(pid2, :get_state)
+      GenServer.stop(pid2)
+
+      {:ok, content} = File.read(output_file)
+      json = :json.decode(content)
+
+      counts = Enum.map(json["error_groups"], & &1["count"])
+      assert counts == Enum.sort(counts, :desc)
+      assert hd(json["error_groups"])["count"] == 2
+
+      File.rm!(output_file)
+    end
+
     test "outputs to stdout when no output file specified" do
       # Use file output for testing to avoid polluting test output.
       # The stdout code path is implicitly tested via `mix test.json`.

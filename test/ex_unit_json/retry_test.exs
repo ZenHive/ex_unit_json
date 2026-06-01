@@ -191,6 +191,7 @@ defmodule ExUnitJSON.RetryTest do
       merged = Retry.merge(run1, run2)
 
       assert merged["summary"]["result"] == "failed"
+      assert merged["summary"]["invalid"] == 2
       assert merged["module_failures"] == [module_failure("RealModuleTest")]
       refute Map.has_key?(merged, "flaky")
       assert merged["retry"]["confirmed"] == 1
@@ -203,6 +204,156 @@ defmodule ExUnitJSON.RetryTest do
       merged = Retry.merge(run1, run2)
 
       assert merged["summary"]["invalid"] == 0
+    end
+  end
+
+  describe "merge/2 — invalid tests (setup_all casualties)" do
+    test "--all: healed invalid tests are replaced with their run-2 passing entries" do
+      # Codex-bot-flagged scenario (PR #2): run 1 setup_all fails, tests are
+      # invalid (visible with --all); run 2 heals → no stale invalid entries
+      # may survive in a green document.
+      run1 =
+        doc(
+          [test_map("FlakyModuleTest", "test a", "invalid"), test_map("FlakyModuleTest", "test b", "invalid")],
+          module_failures: [module_failure("FlakyModuleTest")],
+          invalid: 2
+        )
+
+      run2 = doc([test_map("FlakyModuleTest", "test a", "passed"), test_map("FlakyModuleTest", "test b", "passed")])
+
+      merged = Retry.merge(run1, run2)
+
+      assert merged["summary"]["result"] == "passed"
+      assert merged["summary"]["invalid"] == 0
+      assert merged["summary"]["failed"] == 0
+      assert Enum.map(merged["tests"], & &1["state"]) == ["passed", "passed"]
+      refute Map.has_key?(merged, "module_failures")
+      assert [%{"scope" => "module"}] = merged["flaky"]
+    end
+
+    test "--all: healed invalid tests move from invalid into passed counts" do
+      run1 =
+        doc(
+          [test_map("FlakyModuleTest", "test a", "invalid")],
+          module_failures: [module_failure("FlakyModuleTest")],
+          invalid: 1
+        )
+
+      run2 = doc([test_map("FlakyModuleTest", "test a", "passed")])
+
+      merged = Retry.merge(run1, run2)
+
+      assert merged["summary"]["passed"] == 1
+      assert merged["summary"]["invalid"] == 0
+    end
+
+    test "--all: invalid test that fails on retry becomes a confirmed failure" do
+      run1 =
+        doc(
+          [test_map("FlakyModuleTest", "test a", "invalid")],
+          module_failures: [module_failure("FlakyModuleTest")],
+          invalid: 1
+        )
+
+      # setup_all healed, but the test fails on its own in run 2.
+      run2 = doc([test_map("FlakyModuleTest", "test a", "failed", %{"failures" => [%{"message" => "run2 detail"}]})])
+
+      merged = Retry.merge(run1, run2)
+
+      assert merged["summary"]["result"] == "failed"
+      assert merged["summary"]["failed"] == 1
+      assert merged["summary"]["invalid"] == 0
+      [confirmed] = merged["tests"]
+      assert confirmed["state"] == "failed"
+      assert confirmed["failures"] == [%{"message" => "run2 detail"}]
+    end
+
+    test "failures-only: run-2 failures from a healed setup_all are surfaced, heals counted" do
+      # Default output hides invalid tests: run 1's array is empty even though
+      # the setup_all failure invalidated 2 tests.
+      run1 = doc([], module_failures: [module_failure("FlakyModuleTest")], invalid: 2)
+
+      # Run 2 (--failed --all): setup_all healed; one test passes, one fails.
+      run2 =
+        doc([
+          test_map("FlakyModuleTest", "test a", "passed"),
+          test_map("FlakyModuleTest", "test b", "failed")
+        ])
+
+      merged = Retry.merge(run1, run2)
+
+      assert merged["summary"]["result"] == "failed"
+      assert merged["summary"]["failed"] == 1
+      assert merged["summary"]["invalid"] == 0
+      assert merged["summary"]["passed"] == 1
+      assert [%{"name" => "test b", "state" => "failed"}] = merged["tests"]
+    end
+
+    test "partial heal: healed module's invalid count clears even when an unrelated failure is confirmed" do
+      # Copilot-flagged scenario (PR #2): module A's setup_all heals on retry, but
+      # an unrelated test stays confirmed — the stale invalid count must not survive.
+      run1 =
+        doc(
+          [test_map("OtherTest", "stays red", "failed")],
+          module_failures: [module_failure("FlakyModuleTest")],
+          invalid: 3
+        )
+
+      run2 =
+        doc([
+          test_map("OtherTest", "stays red", "failed"),
+          test_map("FlakyModuleTest", "test a", "passed"),
+          test_map("FlakyModuleTest", "test b", "passed"),
+          test_map("FlakyModuleTest", "test c", "passed")
+        ])
+
+      merged = Retry.merge(run1, run2)
+
+      assert merged["summary"]["result"] == "failed"
+      assert merged["summary"]["failed"] == 1
+      assert merged["summary"]["invalid"] == 0
+      assert merged["summary"]["passed"] == 3
+      assert [%{"scope" => "module"}] = merged["flaky"]
+    end
+
+    test "recurring setup_all failure keeps its invalid tests and count" do
+      run1 =
+        doc(
+          [test_map("RealModuleTest", "test a", "invalid")],
+          module_failures: [module_failure("RealModuleTest")],
+          invalid: 1
+        )
+
+      # Run 2: setup_all fails again — test stays invalid.
+      run2 =
+        doc(
+          [test_map("RealModuleTest", "test a", "invalid")],
+          module_failures: [module_failure("RealModuleTest")],
+          invalid: 1
+        )
+
+      merged = Retry.merge(run1, run2)
+
+      assert merged["summary"]["result"] == "failed"
+      assert merged["summary"]["invalid"] == 1
+      assert [%{"state" => "invalid"}] = merged["tests"]
+      assert merged["module_failures"] == [module_failure("RealModuleTest")]
+    end
+
+    test "retried count includes invalid tests and module failures" do
+      run1 =
+        doc(
+          [test_map("FooTest", "fails", "failed"), test_map("FlakyModuleTest", "casualty", "invalid")],
+          module_failures: [module_failure("FlakyModuleTest")],
+          invalid: 1
+        )
+
+      run2 = doc([test_map("FooTest", "fails", "passed"), test_map("FlakyModuleTest", "casualty", "passed")])
+
+      merged = Retry.merge(run1, run2)
+
+      # 1 failed test + 1 invalid test + 1 module failure re-run
+      assert merged["retry"]["retried"] == 3
     end
   end
 

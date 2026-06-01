@@ -4,7 +4,8 @@ defmodule ExUnitJSON.Formatter do
 
   This GenServer receives events from ExUnit during test execution
   and accumulates results. When the test suite finishes, it outputs
-  a complete JSON document with all test results and summary statistics.
+  a JSON document with the accumulated test results and summary statistics
+  (failures only by default; all tests with `--all`).
 
   ## Usage
 
@@ -62,10 +63,10 @@ defmodule ExUnitJSON.Formatter do
     #
     # The Mix task sets Application.put_env(:logger, :level, :error) to suppress
     # Logger output from test_helper.exs. But that global level breaks capture_log
-    # in tests. Now that test_helper.exs has run, we reset the global level to :all
+    # in tests. Now that test_helper.exs has run, we reset the global level to :debug
     # and set only the HANDLER level to :error. This way:
     # - Console output is suppressed (handler level :error)
-    # - capture_log works (global level :all allows messages to reach handlers)
+    # - capture_log works (global level :debug allows messages to reach handlers)
     if Keyword.get(merged_opts, :quiet, false) do
       # Reset global level so capture_log works in tests
       Logger.configure(level: :debug)
@@ -170,9 +171,7 @@ defmodule ExUnitJSON.Formatter do
     final_output =
       case File.read(path) do
         {:ok, existing} when byte_size(existing) > 0 ->
-          existing_doc = :json.decode(existing)
-          new_doc = :json.decode(IO.iodata_to_binary(output))
-          :json.encode(merge_documents(existing_doc, new_doc))
+          merge_existing_output(existing, output)
 
         _ ->
           output
@@ -189,6 +188,21 @@ defmodule ExUnitJSON.Formatter do
         """)
 
         :ok
+    end
+  end
+
+  @doc false
+  # Merges this app's output with an earlier umbrella app's output already in the
+  # file. Compact (JSONL) output is line-oriented, so concatenation IS the merge;
+  # decoding it as a single JSON document would crash.
+  @spec merge_existing_output(binary(), iodata()) :: iodata()
+  defp merge_existing_output(existing, output) do
+    if Config.compact?() do
+      [existing, output]
+    else
+      existing_doc = :json.decode(existing)
+      new_doc = :json.decode(IO.iodata_to_binary(output))
+      :json.encode(merge_documents(existing_doc, new_doc))
     end
   end
 
@@ -210,7 +224,13 @@ defmodule ExUnitJSON.Formatter do
 
   @spec merge_tests(map(), map(), map()) :: map()
   defp merge_tests(doc, existing, new) do
-    case Map.get(existing, "tests", []) ++ Map.get(new, "tests", []) do
+    merged = Map.get(existing, "tests", []) ++ Map.get(new, "tests", [])
+
+    # Each app's output is already filtered, so --first-failure would otherwise
+    # yield one failure per app; the cap must hold across the merged document.
+    merged = if Config.first_failure?(), do: Enum.take(merged, 1), else: merged
+
+    case merged do
       [] -> doc
       tests -> Map.put(doc, "tests", tests)
     end
@@ -243,6 +263,8 @@ defmodule ExUnitJSON.Formatter do
               "example" => entries |> hd() |> Map.get("example")
             }
           end)
+          # Keep ErrorGroups.build_error_groups/1's documented count-desc ordering
+          |> Enum.sort_by(&Map.get(&1, "count"), :desc)
 
         Map.put(doc, "error_groups", groups)
     end

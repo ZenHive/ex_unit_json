@@ -26,8 +26,8 @@ defmodule ExUnitJSON.Filters do
 
     1. `summary_only` - Highest priority, returns nil (omits tests array)
     2. `first_failure` - Returns only the first failed test
-    3. `failures_only` - Returns all failed tests
-    4. Default - Returns all tests
+    3. `failures_only` - Returns all failed tests (the default since v0.3.0)
+    4. `failures_only: false` (the `--all` flag) - Returns all tests
 
   ## Examples
 

@@ -13,7 +13,7 @@ defmodule ExUnitJSON do
     that heal are surfaced as `flaky` instead of blocking (opt out with `--no-retry`)
   - **Code coverage** available with `--cover` flag
   - **Coverage gating** with `--cover-threshold N` (fails if overall coverage drops below N)
-  - All test states: passed, failed, skipped, excluded
+  - All test states: passed, failed, skipped, excluded, invalid
   - Detailed failure information with assertion values and stacktraces
   - Filtering options: `--summary-only`, `--all`, `--failures-only`, `--first-failure`, `--filter-out`, `--group-by-error`, `--quiet`, `--compact`
   - File output: `--output results.json`
@@ -42,9 +42,10 @@ defmodule ExUnitJSON do
   ## Quick Start
 
   By default, `mix test.json` outputs only failed tests. This is optimized for AI agents
-  where passing tests are noise. When all tests pass, you get:
+  where passing tests are noise. When all tests pass, you get an empty `tests` array:
 
-      {"version":1,"summary":{"total":50,"passed":50,"failed":0},"tests":[]}
+      {"version":1,"seed":12345,"summary":{"total":50,"passed":50,"failed":0,"skipped":0,
+       "excluded":0,"invalid":0,"duration_us":54321,"result":"passed"},"tests":[]}
 
   Use `--all` to include all tests when needed.
 
@@ -117,6 +118,11 @@ defmodule ExUnitJSON do
   named in the output. This is the fix for the common loop where an agent treats an
   intermittent async/GenServer/LiveView failure as a real regression.
 
+  Tests invalidated by a flaky `setup_all` failure resolve to their retry state:
+  when the module heals on run 2, each of its tests becomes passed (counted in
+  `summary.passed`) or failed (a confirmed failure) instead of staying
+  `"invalid"`.
+
   Retry is skipped (run-1 output reported unchanged) for `--no-retry`,
   `config :ex_unit_json, retry: false`, `--failed`, `--summary-only`,
   `--first-failure`, `--compact`, `--group-by-error`, `--filter-out`, a `file:line`
@@ -138,8 +144,6 @@ defmodule ExUnitJSON do
           "total_percentage": 92.5,
           "total_lines": 400,
           "covered_lines": 370,
-          "threshold": 80,
-          "threshold_met": true,
           "modules": [
             {
               "module": "MyApp.Users",
@@ -216,7 +220,8 @@ defmodule ExUnitJSON do
         "flaky": [ ... ],
         "retry": { ... },
         "error_groups": [ ... ],
-        "module_failures": [ ... ]
+        "module_failures": [ ... ],
+        "hint": "..."
       }
 
   | Field | Type | Description |
@@ -230,6 +235,25 @@ defmodule ExUnitJSON do
   | `error_groups` | array | Failures grouped by message (only with `--group-by-error`) |
   | `module_failures` | array | setup_all failures (only present when failures occur) |
   | `coverage` | object | Code coverage data (included with `--cover`) |
+  | `hint` | string | Suggestion to use `--failed` (only present when previous failures exist and auto-retry is off) |
+
+  ### Module Failure Object
+
+  Each `module_failures` entry describes a `setup_all` failure:
+
+      {
+        "name": "MyApp.FlakyTest",
+        "file": "test/my_app/flaky_test.exs",
+        "state": "failed",
+        "failures": [ ... ]
+      }
+
+  | Field | Type | Description |
+  |-------|------|-------------|
+  | `name` | string | Test module name |
+  | `file` | string | Source file path |
+  | `state` | string | Always `"failed"` |
+  | `failures` | array | Failure details (same shape as test failures) |
 
   ### Retry Object
 
@@ -247,7 +271,7 @@ defmodule ExUnitJSON do
   |-------|------|-------------|
   | `ran` | boolean | Always `true` when present |
   | `passes` | integer | Number of retry passes (currently always 1) |
-  | `retried` | integer | Number of failed tests re-run |
+  | `retried` | integer | Number of failed tests, invalid tests, and failed modules re-run |
   | `confirmed` | integer | Failures that recurred (still red) |
   | `flaky` | integer | Failures that healed on retry |
 
@@ -301,7 +325,7 @@ defmodule ExUnitJSON do
   | `module` | string | Test module name |
   | `file` | string | Source file path |
   | `line` | integer | Line number |
-  | `state` | string | `"passed"`, `"failed"`, `"skipped"`, or `"excluded"` |
+  | `state` | string | `"passed"`, `"failed"`, `"skipped"`, `"excluded"`, or `"invalid"` (setup_all failed) |
   | `duration_us` | integer | Test duration in microseconds |
   | `tags` | object | Test tags (filtered, no internal ExUnit keys) |
   | `failures` | array | Failure details (empty for passing tests) |

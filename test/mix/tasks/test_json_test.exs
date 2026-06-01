@@ -1043,9 +1043,9 @@ defmodule Mix.Tasks.Test.JsonTest do
 
   describe "focused_run?/1 helper" do
     test "detects .exs file targeting" do
-      assert focused_run?(["test/foo_test.exs"])
-      assert focused_run?(["test/foo_test.exs:42"])
-      assert focused_run?(["--quiet", "test/foo_test.exs"])
+      assert Json.focused_run?(["test/foo_test.exs"])
+      assert Json.focused_run?(["test/foo_test.exs:42"])
+      assert Json.focused_run?(["--quiet", "test/foo_test.exs"])
     end
 
     test "detects directory targeting" do
@@ -1054,27 +1054,96 @@ defmodule Mix.Tasks.Test.JsonTest do
       File.mkdir_p!(temp_dir)
 
       try do
-        assert focused_run?([temp_dir])
-        assert focused_run?(["--quiet", temp_dir])
+        assert Json.focused_run?([temp_dir])
+        assert Json.focused_run?(["--quiet", temp_dir])
       after
         File.rm_rf!(temp_dir)
       end
     end
 
     test "detects --only tag filtering" do
-      assert focused_run?(["--only", "integration"])
-      assert focused_run?(["--only=integration"])
+      assert Json.focused_run?(["--only", "integration"])
+      assert Json.focused_run?(["--only=integration"])
     end
 
     test "detects --exclude tag filtering" do
-      assert focused_run?(["--exclude", "slow"])
-      assert focused_run?(["--exclude=slow"])
+      assert Json.focused_run?(["--exclude", "slow"])
+      assert Json.focused_run?(["--exclude=slow"])
     end
 
     test "returns false for full suite run" do
-      refute focused_run?([])
-      refute focused_run?(["--quiet"])
-      refute focused_run?(["--summary-only", "--quiet"])
+      refute Json.focused_run?([])
+      refute Json.focused_run?(["--quiet"])
+      refute Json.focused_run?(["--summary-only", "--quiet"])
+    end
+  end
+
+  describe "coverage_precompile_args/1" do
+    test "skips the precompile when --no-compile is passed" do
+      assert Json.coverage_precompile_args(["--no-compile"]) == :skip
+      assert Json.coverage_precompile_args(["--quiet", "--no-compile"]) == :skip
+    end
+
+    test "forwards --warnings-as-errors to the precompile" do
+      assert Json.coverage_precompile_args(["--warnings-as-errors"]) == {:compile, ["--warnings-as-errors"]}
+    end
+
+    test "defaults to --no-warnings-as-errors" do
+      assert Json.coverage_precompile_args([]) == {:compile, ["--no-warnings-as-errors"]}
+      assert Json.coverage_precompile_args(["test/foo_test.exs"]) == {:compile, ["--no-warnings-as-errors"]}
+    end
+  end
+
+  describe "clear_output_file/1" do
+    test "removes an existing file" do
+      path = Path.join(System.tmp_dir!(), "clear_test_#{System.unique_integer([:positive])}.json")
+      File.write!(path, "stale")
+
+      assert Json.clear_output_file(path) == :ok
+      refute File.exists?(path)
+    end
+
+    test "succeeds when the file does not exist" do
+      path = Path.join(System.tmp_dir!(), "clear_missing_#{System.unique_integer([:positive])}.json")
+
+      assert Json.clear_output_file(path) == :ok
+    end
+
+    test "truncates the file when it cannot be removed" do
+      # A file inside a non-writable directory can't be unlinked, but its
+      # content can still be truncated (the file itself stays writable).
+      dir = Path.join(System.tmp_dir!(), "clear_dir_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      path = Path.join(dir, "out.json")
+      File.write!(path, "stale")
+      File.chmod!(dir, 0o555)
+
+      try do
+        assert Json.clear_output_file(path) == :ok
+        assert File.read!(path) == ""
+      after
+        File.chmod!(dir, 0o755)
+        File.rm_rf!(dir)
+      end
+    end
+
+    test "raises when the file can be neither removed nor truncated" do
+      dir = Path.join(System.tmp_dir!(), "clear_locked_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      path = Path.join(dir, "out.json")
+      File.write!(path, "stale")
+      File.chmod!(path, 0o444)
+      File.chmod!(dir, 0o555)
+
+      try do
+        assert_raise Mix.Error, ~r/Could not clear output file/, fn ->
+          Json.clear_output_file(path)
+        end
+      after
+        File.chmod!(dir, 0o755)
+        File.chmod!(path, 0o644)
+        File.rm_rf!(dir)
+      end
     end
   end
 
@@ -1262,23 +1331,12 @@ defmodule Mix.Tasks.Test.JsonTest do
     String.ends_with?(arg, ".exs") or String.contains?(arg, ".exs:")
   end
 
-  # Duplicates focused_run?/1 from Mix.Tasks.Test.Json
-  defp focused_run?(test_args) do
-    Enum.any?(test_args, fn arg ->
-      String.ends_with?(arg, ".exs") or
-        String.contains?(arg, ".exs:") or
-        File.dir?(arg) or
-        String.starts_with?(arg, "--only") or
-        String.starts_with?(arg, "--exclude")
-    end)
-  end
-
   # Duplicates check_failed_usage/2 from Mix.Tasks.Test.Json with configurable failures file
   defp check_failed_usage(opts, test_args, failures_file) do
     with true <- File.exists?(failures_file),
          count when count > 0 <- count_previous_failures(failures_file),
          false <- "--failed" in test_args,
-         false <- focused_run?(test_args),
+         false <- Json.focused_run?(test_args),
          false <- Keyword.get(opts, :no_warn, false) do
       if Application.get_env(:ex_unit_json, :enforce_failed, false) do
         {:error, :blocked, count}
@@ -1342,81 +1400,9 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
   end
 
-  # Helper to parse args using the same logic as the Mix task.
-  # NOTE: This duplicates the logic in Mix.Tasks.Test.Json.extract_json_opts/3
-  # for test isolation. If you add a new flag, update both locations.
-  defp parse_args(args), do: extract_json_opts(args, [], [])
-
-  defp extract_json_opts([], opts, remaining) do
-    {merge_list_opts(Enum.reverse(opts)), Enum.reverse(remaining)}
-  end
-
-  defp extract_json_opts(["--summary-only" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:summary_only, true} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--failures-only" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:failures_only, true} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--all" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:failures_only, false} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--first-failure" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:first_failure, true} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--filter-out", value | rest], opts, remaining) do
-    extract_json_opts(rest, [{:filter_out, value} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--output", value | rest], opts, remaining) do
-    extract_json_opts(rest, [{:output, value} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--compact" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:compact, true} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--group-by-error" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:group_by_error, true} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--quiet" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:quiet, true} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--no-warn" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--no-retry" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:retry, false} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--cover" | rest], opts, remaining) do
-    extract_json_opts(rest, [{:cover, true} | opts], remaining)
-  end
-
-  defp extract_json_opts(["--cover-threshold", value | rest], opts, remaining) do
-    extract_json_opts(rest, [{:cover_threshold, value} | opts], remaining)
-  end
-
-  defp extract_json_opts([arg | rest], opts, remaining) do
-    extract_json_opts(rest, opts, [arg | remaining])
-  end
-
-  defp merge_list_opts(opts) do
-    filters = Keyword.get_values(opts, :filter_out)
-    rest = Keyword.delete(opts, :filter_out)
-
-    if filters == [] do
-      rest
-    else
-      [{:filter_out, filters} | rest]
-    end
-  end
+  # Parses args via the production parser (Mix.Tasks.Test.Json.parse_json_opts/1)
+  # so the option-parsing tests exercise the real implementation, not a copy.
+  defp parse_args(args), do: Json.parse_json_opts(args)
 
   # Helper to create a temporary test file
   defp create_temp_test_file(content) do

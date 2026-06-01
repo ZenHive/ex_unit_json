@@ -54,8 +54,6 @@ defmodule Mix.Tasks.Test.Json do
         "total_percentage": 96.96,
         "total_lines": 330,
         "covered_lines": 320,
-        "threshold": 80,
-        "threshold_met": true,
         "modules": [
           {
             "module": "MyApp.Module",
@@ -66,6 +64,10 @@ defmodule Mix.Tasks.Test.Json do
           }
         ]
       }
+
+  The `threshold` and `threshold_met` fields are added only when
+  `--cover-threshold` is used. Coverage cannot be combined with `--compact`
+  (a warning is printed and coverage data is omitted).
 
   ## Default Behavior (v0.3.0+)
 
@@ -96,7 +98,8 @@ defmodule Mix.Tasks.Test.Json do
     * `--failed` is already used
     * A specific file or directory is targeted
     * `--only` or `--exclude` tag filters are used
-    * `--no-warn` flag is passed
+    * `--no-warn` or `--quiet` is passed
+    * Auto-retry is enabled (the retry supersedes the manual `--failed` hint)
 
   ## Automatic Retry (v0.5.0+)
 
@@ -112,6 +115,10 @@ defmodule Mix.Tasks.Test.Json do
   `summary.result == "passed"` and exits 0, so an AI agent isn't blocked by a
   flake — while the flaky tests are still named in the output. A test that fails
   both runs stays a hard failure (exit non-zero).
+
+  Tests invalidated by a flaky `setup_all` failure are handled the same way:
+  when the module heals on retry, its tests resolve to their retry state
+  (passed or failed) instead of staying `"invalid"`.
 
   The merged output adds (only when a retry ran): a `flaky` array, a
   `summary.flaky` count, and a `retry` metadata block. The schema `version`
@@ -181,7 +188,7 @@ defmodule Mix.Tasks.Test.Json do
     # Ensure project is compiled before coverage instrumentation.
     # On clean builds, compile_project_modules() would otherwise find no beam files
     # because Mix.Task.run("test", ...) triggers compilation AFTER coverage starts.
-    if cover_enabled?, do: Mix.Task.run("compile", ["--no-warnings-as-errors"])
+    if cover_enabled?, do: precompile_for_coverage(test_args)
 
     test_args = maybe_start_coverage(test_args, cover_enabled?)
 
@@ -191,11 +198,13 @@ defmodule Mix.Tasks.Test.Json do
 
     # Check if user should use --failed (warn by default, block if configured).
     # Auto-retry supersedes the manual hint, so the TIP is suppressed when on.
-    handle_failed_usage_check(opts, test_args, retry_enabled?)
+    # Uses the user's original args — coverage's internal --exclude must not
+    # make the run look user-focused and silently suppress the TIP.
+    handle_failed_usage_check(opts, passthrough_args, retry_enabled?)
 
     # Compute hint for JSON output (suggests --failed when appropriate).
     # Skipped when auto-retry is handling re-runs to avoid double-signalling.
-    opts = if retry_enabled?, do: opts, else: maybe_add_hint_opt(opts, test_args)
+    opts = if retry_enabled?, do: opts, else: maybe_add_hint_opt(opts, passthrough_args)
 
     # In umbrella projects, each app runs its own ExUnit suite, each triggering
     # suite_finished which writes to the output file. Clear the file at the start
@@ -251,27 +260,62 @@ defmodule Mix.Tasks.Test.Json do
   @doc false
   # Clears the output file at the start of a run so the formatter can distinguish
   # "file from an earlier app in this umbrella run" from "stale file from a previous run".
-  # Surfaces non-:enoent errors so a locked/unwritable path fails loudly instead of
-  # being masked by the later merge path reading stale content.
   @spec maybe_clear_output_file(keyword()) :: :ok
   defp maybe_clear_output_file(opts) do
     case Keyword.get(opts, :output) do
-      nil ->
-        :ok
-
-      path ->
-        case File.rm(path) do
-          :ok ->
-            :ok
-
-          {:error, :enoent} ->
-            :ok
-
-          {:error, reason} ->
-            IO.puts(:stderr, "Warning: could not clear #{path}: #{:file.format_error(reason)}")
-            :ok
-        end
+      nil -> :ok
+      path -> clear_output_file(path)
     end
+  end
+
+  @doc false
+  # Public for testing. Removes the output file; when removal fails, falls back to
+  # truncating it; when that also fails, raises — silently merging stale results
+  # from a previous run into this run's output is never acceptable.
+  # sobelow_skip ["Traversal.FileModule"]
+  @spec clear_output_file(String.t()) :: :ok
+  def clear_output_file(path) do
+    with {:error, reason} when reason != :enoent <- File.rm(path),
+         {:error, _} <- File.write(path, "") do
+      Mix.raise("""
+      Could not clear output file #{path}: #{:file.format_error(reason)}
+
+      Stale results from a previous run would be merged into this run's output.
+      Remove the file or choose a different --output path.
+      """)
+    else
+      _ -> :ok
+    end
+  end
+
+  @doc false
+  # Public for testing: the option parser is the task's core parsing contract, and
+  # unit tests must exercise the production implementation, not a copy of it.
+  @spec parse_json_opts([String.t()]) :: {keyword(), [String.t()]}
+  def parse_json_opts(args), do: extract_json_opts(args)
+
+  @doc false
+  # Public for testing: decides the compile invocation for coverage precompilation,
+  # honoring the user's compile semantics instead of overriding them.
+  @spec coverage_precompile_args([String.t()]) :: {:compile, [String.t()]} | :skip
+  def coverage_precompile_args(test_args) do
+    cond do
+      "--no-compile" in test_args -> :skip
+      "--warnings-as-errors" in test_args -> {:compile, ["--warnings-as-errors"]}
+      true -> {:compile, ["--no-warnings-as-errors"]}
+    end
+  end
+
+  @doc false
+  # Runs the coverage precompile decided by coverage_precompile_args/1.
+  @spec precompile_for_coverage([String.t()]) :: :ok
+  defp precompile_for_coverage(test_args) do
+    case coverage_precompile_args(test_args) do
+      :skip -> :ok
+      {:compile, args} -> Mix.Task.run("compile", args)
+    end
+
+    :ok
   end
 
   @doc false
@@ -367,10 +411,22 @@ defmodule Mix.Tasks.Test.Json do
   end
 
   @doc false
-  # Starts coverage instrumentation and excludes conflicting tests
+  # Starts coverage instrumentation and excludes conflicting tests.
+  # A failed start is surfaced on stderr instead of silently producing
+  # incomplete or empty coverage data.
   @spec maybe_start_coverage([String.t()], boolean()) :: [String.t()]
   defp maybe_start_coverage(test_args, true = _cover_enabled?) do
-    ExUnitJSON.Coverage.start()
+    case ExUnitJSON.Coverage.start() do
+      {:error, reason} ->
+        IO.puts(
+          :stderr,
+          "Warning: coverage instrumentation failed (#{inspect(reason)}); coverage data may be incomplete."
+        )
+
+      _ ->
+        :ok
+    end
+
     ["--exclude", "coverage_unit" | test_args]
   end
 
@@ -521,9 +577,9 @@ defmodule Mix.Tasks.Test.Json do
   end
 
   @doc false
-  # User is being intentional about scope - no need to warn
+  # Public for testing. User is being intentional about scope - no need to warn.
   @spec focused_run?([String.t()]) :: boolean()
-  defp focused_run?(test_args) do
+  def focused_run?(test_args) do
     Enum.any?(test_args, fn arg ->
       String.ends_with?(arg, ".exs") or
         String.contains?(arg, ".exs:") or

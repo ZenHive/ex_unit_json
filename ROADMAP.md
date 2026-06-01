@@ -62,7 +62,7 @@ The `ai_output` bundle folds in the former "Phase 1.5: AI-Friendly Enhancements"
 ## Phase 2: Future Enhancements
 
 **Note:** Prioritized by ROI — `rmap` computes `Eff = (B+U)/(2·D)`. Done features
-shipped across the v0.3.x–v0.4.x line; pending features sorted by efficiency.
+shipped across the v0.1.x–v0.5.0 line; pending features sorted by efficiency.
 
 <!-- TASKS:BEGIN phase=2 -->
 | Task | Status | Notes |
@@ -100,13 +100,13 @@ shipped across the v0.3.x–v0.4.x line; pending features sorted by efficiency.
 - **Codec Boundary:** Encoder returns plain maps/lists; actual JSON serialization only in formatter
 
 ### Key Libraries/Dependencies
-- **Primary:** Use Elixir 1.18+'s built-in `:json` module when available
-- **Fallback:** Use `Jason` if `:json` is unavailable (optional dependency)
+- **Primary:** Elixir 1.18+'s built-in `:json` module (no runtime dependencies)
+- **Fallback (planned — Task 29, not yet implemented):** Optional `Jason` fallback for earlier Elixir versions
 - **ex_doc:** Documentation only (dev dependency)
 
 ### Compatibility
-- **Elixir 1.18+:** Preferred (native `:json`)
-- **Earlier versions:** Supported via optional Jason fallback
+- **Elixir 1.18+:** Required (native `:json`)
+- **Earlier versions:** Not yet supported — planned via the optional Jason fallback (Task 29)
 
 ---
 
@@ -144,15 +144,22 @@ Root
 - seed: integer
 - summary: object
 - tests: array of test objects (omitted with `--summary-only`; filtered with `--failures-only`)
+- flaky: array of test/module objects that failed then passed on retry (only when a retry healed something)
+- retry: object — `ran`/`passes`/`retried`/`confirmed`/`flaky` (only when a retry ran)
+- module_failures: array of setup_all failure objects (only when present)
 - error_groups: array of error group objects (only with `--group-by-error`)
-- meta: object (optional; includes truncation settings)
+- coverage: object (only with `--cover`)
+- hint: string (only when previous failures exist and auto-retry is off)
 
 Summary
 - total: integer
 - passed: integer
-- failed: integer
+- failed: integer (confirmed failures, after retry if one ran)
 - skipped: integer
 - excluded: integer
+- invalid: integer (tests invalidated by a setup_all failure)
+- filtered: integer (only with `--filter-out`, when non-zero)
+- flaky: integer (only when a retry ran)
 - duration_us: integer (microseconds)
 - result: string ("passed" | "failed")
 
@@ -161,7 +168,7 @@ Test
 - module: string
 - file: string
 - line: integer
-- state: string ("passed" | "failed" | "skipped" | "excluded")
+- state: string ("passed" | "failed" | "skipped" | "excluded" | "invalid")
 - duration_us: integer (microseconds)
 - tags: object (filtered)
 - failures: array of failure objects (only when failed)
@@ -183,12 +190,11 @@ Frame
 - arity: integer (optional)
 - app: string (optional)
 
-Metadata
-- truncation: object
-  - value_char_limit: integer (default: 500)
-  - expr_char_limit: integer (default: 200)
-  - collection_item_limit: integer (default: 50)
-  - printable_limit: integer (default: 500)
+Truncation limits (internal encoder constants, not emitted in output)
+- value_char_limit: 500
+- expr_char_limit: 200
+- collection_item_limit: 50
+- printable_limit: 500
 
 Error Group (only with `--group-by-error`)
 - pattern: string (first line of error message, max 200 chars)

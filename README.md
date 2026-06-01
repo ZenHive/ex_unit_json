@@ -60,7 +60,7 @@ mix test.json --quiet --all
 
 | Flag | Description |
 |------|-------------|
-| `--quiet` | Suppress Logger output for clean JSON |
+| `--quiet` | Suppress Logger output and TIP warnings for clean JSON piping |
 | `--all` | Include all tests (default shows only failures) |
 | `--summary-only` | Output only the summary, no individual tests |
 | `--first-failure` | Output only the first failed test |
@@ -82,7 +82,7 @@ When a run has failures, `mix test.json` re-runs only the previously-failed test
 - **confirmed** — failed both runs → stays red (`tests`), exits non-zero.
 - **flaky** — failed then passed → moved to a top-level `flaky` array (named, never hidden) and no longer blocks the run.
 
-When every first-run failure heals, `summary.result` is `"passed"` and the exit code is `0`, so an AI agent isn't blocked by an intermittent async/GenServer/LiveView failure — while each flaky test is still surfaced. A `retry` metadata object (`retried`/`confirmed`/`flaky`) is added when a retry runs.
+When every first-run failure heals, `summary.result` is `"passed"` and the exit code is `0`, so an AI agent isn't blocked by an intermittent async/GenServer/LiveView failure — while each flaky test is still surfaced. A `retry` metadata object (`retried`/`confirmed`/`flaky`) is added when a retry runs. Tests invalidated by a flaky `setup_all` resolve to their retry state (passed or failed) instead of staying `invalid`.
 
 Retry is skipped for `--no-retry`, `config :ex_unit_json, retry: false`, `--failed`, `--summary-only`, `--first-failure`, `--compact`, `--group-by-error`, `--filter-out`, a `file:line` target, or umbrella projects. A green suite never triggers a second run.
 
@@ -98,7 +98,7 @@ mix test.json --quiet --cover
 mix test.json --quiet --cover --cover-threshold 80
 ```
 
-Coverage output includes total percentage, per-module breakdown, and uncovered line numbers. See [full documentation](https://hexdocs.pm/ex_unit_json) for schema details.
+Coverage output includes total percentage, per-module breakdown, and uncovered line numbers. Coverage cannot be combined with `--compact` (a warning is printed and coverage data is omitted). See [full documentation](https://hexdocs.pm/ex_unit_json) for schema details.
 
 ### Using with jq
 

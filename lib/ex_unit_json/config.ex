@@ -16,7 +16,8 @@ defmodule ExUnitJSON.Config do
     * `:compact` - When true, output JSONL with minimal fields
     * `:group_by_error` - When true, add error_groups array grouping failures by message
     * `:quiet` - When true, suppress Logger output for clean JSON
-    * `:hint` - Controls the "use --failed" tip behavior
+    * `:hint` - Hint message string suggesting `--failed` (set by the Mix task,
+      surfaced as a top-level `hint` key in the JSON output)
     * `:retry` - When false (via `--no-retry`), disable auto-retry of failed tests
 
   """
@@ -44,7 +45,7 @@ defmodule ExUnitJSON.Config do
           compact: boolean(),
           group_by_error: boolean(),
           quiet: boolean(),
-          hint: boolean(),
+          hint: String.t(),
           retry: boolean()
         ]
 

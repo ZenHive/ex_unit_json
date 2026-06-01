@@ -4,6 +4,50 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## [Unreleased]
+
+### Bug Fixes
+
+**Retry: `setup_all` casualties (invalid tests) now resolve against the retry run**
+
+Tests invalidated by a flaky `setup_all` failure are now resolved against their run-2 state when the auto-retry runs: healed tests become `passed` (counted in `summary.passed`), tests that fail on their own become confirmed failures, and `summary.invalid` reflects what is actually still invalid — including on partial heals. Previously, `--all` output could report `result: "passed"` / `invalid: 0` while stale `"invalid"` entries remained in `tests`, and run-2 failures of previously-invalid tests were silently dropped in default (failures-only) output. (Flagged by the Codex and Copilot review bots on PR #2.)
+
+**Umbrella: `--compact --output` no longer crashes on the merge**
+
+Compact (JSONL) output from multiple umbrella apps is now concatenated — previously the second app crashed trying to decode the first app's JSONL as a single JSON document.
+
+**Umbrella: `--first-failure` now caps the merged document to one failure**
+
+Previously each app contributed its own "first failure" to the merged output.
+
+**Umbrella: merged `error_groups` re-sorted by count descending**
+
+Restores the documented ordering invariant after cross-app pattern merging.
+
+**Stale output can no longer leak into a new run**
+
+If the output file can't be removed at run start, it is truncated; if that also fails, the task raises instead of silently merging stale results.
+
+**`--cover` respects user compile semantics**
+
+The coverage precompile now honors `--no-compile` (skips) and forwards `--warnings-as-errors` instead of always compiling with `--no-warnings-as-errors`.
+
+**`--cover` no longer suppresses the `--failed` TIP**
+
+The internal `--exclude coverage_unit` flag no longer makes the run look user-focused to the previous-failures check.
+
+**Coverage instrumentation failures are reported**
+
+`ExUnitJSON.Coverage.start()` errors now print a stderr warning instead of silently producing incomplete coverage data.
+
+### Internal
+
+- Mix task option-parsing tests now exercise the production parser (`Mix.Tasks.Test.Json.parse_json_opts/1`) instead of a copied implementation
+- `ExUnitJSON.Config` `:hint` typespec corrected (`String.t()`, not `boolean()`)
+- Schema documentation: `"invalid"` test state, `module_failures` shape, and top-level `hint` key documented; stale coverage examples corrected
+
+---
+
 ## v0.5.0 (2026-06-01)
 
 ### New Features
@@ -55,6 +99,7 @@ Contributed by @talkingdonkeyz (PR #1).
 - Docs polish: README `--compact` flag row, moduledoc `Mix.Tasks.Test.Json` listing
 - Dep bumps: `dialyzer_json ~> 0.2`, `credo 1.7.18` (1.7.16 crashes parsing regex sigils on Elixir 1.20-rc)
 - Test fixture: `test_apps/umbrella_app/` with two child apps, covered by a new integration test in `test/golden_test.exs`
+- Fix: `:hint` is now accepted by `ExUnitJSON.Config` option validation, so the "use `--failed`" hint actually appears in JSON output (it was previously stripped by `validate_opts/1`)
 
 ---
 
@@ -93,6 +138,16 @@ Previously, using `--cover` with `--compact` would crash because `:json.decode` 
 **Fix: Coverage works on clean builds**
 
 Previously, coverage on a clean build would report empty data because `compile_project_modules()` ran before compilation. Now ensures `mix compile` runs before coverage instrumentation starts.
+
+### New Features
+
+**Coverage gating with `--cover-threshold N`**
+
+Fail the run (exit code 2) when overall coverage drops below N percent. Adds `threshold` and `threshold_met` fields to the `coverage` object:
+
+```bash
+mix test.json --quiet --cover --cover-threshold 80
+```
 
 ### Internal
 

@@ -409,9 +409,9 @@
       "acceptance_criteria": [
         "failure_message populated from failures[0].message when present",
         "Schema version bumped to 2 with a CHANGELOG note",
-        "README + AGENT.md schema docs updated"
+        "README + AGENTS.md schema docs updated"
       ],
-      "body": "Populate the top-level failure_message from failures[0].message when present (currently often null, forcing a drill into the failures array). SCHEMA CHANGE — requires a Schema v2 bump since v1 is already published. Update lib/ex_unit_json/json_encoder.ex, README, AGENT.md, and the global ex-unit-json include.",
+      "body": "Populate the top-level failure_message from failures[0].message when present (currently often null, forcing a drill into the failures array). SCHEMA CHANGE — requires a Schema v2 bump since v1 is already published. Update lib/ex_unit_json/json_encoder.ex, README, AGENTS.md, and the global ex-unit-json include.",
       "scored_at": "2026-05-31",
       "cross_repo": []
     },
