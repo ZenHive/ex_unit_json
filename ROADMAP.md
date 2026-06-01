@@ -28,9 +28,9 @@
 - No external dependencies for core functionality
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 2 — Future Enhancements (8 of 18 done · 0 in progress)
+**Focus phase:** 2 — Future Enhancements (9 of 19 done · 0 in progress)
 
-**Last shipped:** no recent shipments
+**Last shipped:** Task 30 — Automatic retry-on-flaky (default ON) on 2026-06-01
 
 **Up next:** Task 20 — Consistent failure_message field (Schema v2) [D:2/B:7/U:7 → Eff:3.5] 🎯
 <!-- FOCUS:END -->
@@ -85,6 +85,7 @@ shipped across the v0.3.x–v0.4.x line; pending features sorted by efficiency.
 | Task 27 | ⬜ | 🎁 **future** · CI systems integration [D:4/B:5/U:5 → Eff:1.25] 📋 |
 | Task 28 | ⬜ | 🎁 **future** · Custom output templates [D:6/B:4/U:4 → Eff:0.67] ⚠️ |
 | Task 29 | ⬜ | 🎁 **future** · Optional Jason fallback [D:4/B:5/U:5 → Eff:1.25] 📋 |
+| Task 30 | ✅ | 🎁 **failed_iteration** · Automatic retry-on-flaky (default ON) [D:7/B:9/U:9 → Eff:1.29] 📋 |
 <!-- TASKS:END -->
 
 ---

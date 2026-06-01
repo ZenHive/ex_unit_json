@@ -194,4 +194,38 @@ defmodule ExUnitJSON.ConfigTest do
       assert Keyword.get(opts, :quiet) == nil
     end
   end
+
+  describe "retry?/0" do
+    setup do
+      original = Application.get_env(:ex_unit_json, :retry)
+      on_exit(fn -> restore_env(:retry, original) end)
+      :ok
+    end
+
+    test "defaults to true when :retry is not configured" do
+      Application.delete_env(:ex_unit_json, :retry)
+      assert Config.retry?() == true
+    end
+
+    test "returns false when config :ex_unit_json, retry: false" do
+      Application.put_env(:ex_unit_json, :retry, false)
+      assert Config.retry?() == false
+    end
+
+    test "returns true when config :ex_unit_json, retry: true" do
+      Application.put_env(:ex_unit_json, :retry, true)
+      assert Config.retry?() == true
+    end
+  end
+
+  describe "retry option" do
+    test ":retry is preserved through get_opts/0 (so --no-retry survives validation)" do
+      Application.put_env(:ex_unit_json, :opts, retry: false)
+      opts = Config.get_opts()
+      assert Keyword.get(opts, :retry) == false
+    end
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:ex_unit_json, key)
+  defp restore_env(key, value), do: Application.put_env(:ex_unit_json, key, value)
 end

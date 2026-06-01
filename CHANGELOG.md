@@ -4,6 +4,33 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## v0.5.0 (2026-06-01)
+
+### New Features
+
+**Automatic retry-on-flaky (default ON)**
+
+When a run has failures, `mix test.json` now automatically re-runs only the previously-failed tests once (in a subprocess, via ExUnit's native `--failed`) and merges the two runs:
+
+- **confirmed** — failed both runs → stays in `tests`, stays red, exits non-zero.
+- **flaky** — failed run 1, passed run 2 → moved to a new top-level `flaky` array (named, never hidden) and no longer blocks the run.
+
+When every first-run failure heals, `summary.result` becomes `"passed"` and the exit code is `0`, so an AI agent isn't blocked by an intermittent async/GenServer/LiveView/Port flake — while each flaky test is still surfaced. A test that fails both runs stays a hard failure.
+
+This is **default behavior** because the motivating problem is that agents run the bare `mix test.json` command and can't be forced to pass `--failed` themselves. Opt out with `--no-retry` or `config :ex_unit_json, retry: false`.
+
+The merged output adds (only when a retry ran): a `flaky` array, a `summary.flaky` count, and a `retry` metadata object (`ran`/`passes`/`retried`/`confirmed`/`flaky`). The schema `version` stays `1` (additive) — default output for green suites is byte-compatible.
+
+Retry is automatically skipped when it would be meaningless or unsupported: `--no-retry`, `config :ex_unit_json, retry: false`, `--failed` (already iterating; also prevents the retry subprocess recursing), `--summary-only`, `--first-failure`, `--compact`, `--group-by-error`, `--filter-out`, a `file:line` target, or umbrella projects. A green suite never triggers a second run (one extra temp-file round-trip, no second test run).
+
+### Internal
+
+- New module `ExUnitJSON.Retry` — pure `merge/2` overlay classifying flaky vs confirmed, matching tests across runs by `{module, name}`
+- `ExUnitJSON.Config` gains `retry?/0` (reads `config :ex_unit_json, :retry`, default `true`) and a `:retry` option
+- `Mix.Tasks.Test.Json` generalizes the temp-output buffer (cover/quiet/retry), adds the retry orchestration, and uses `System.halt(0)` only on the heal-to-green path (overrides ExUnit's at_exit failure status)
+
+---
+
 ## v0.4.3 (2026-04-18)
 
 > Note: v0.4.2 was published to Hex on 2026-02-28 from an out-of-tree state and

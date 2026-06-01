@@ -84,6 +84,13 @@ defmodule Mix.Tasks.Test.JsonTest do
       assert rest == []
     end
 
+    test "parses --no-retry flag" do
+      {opts, rest} = parse_args(["--no-retry"])
+
+      assert opts[:retry] == false
+      assert rest == []
+    end
+
     test "parses --cover flag" do
       {opts, rest} = parse_args(["--cover"])
 
@@ -933,6 +940,107 @@ defmodule Mix.Tasks.Test.JsonTest do
     end
   end
 
+  describe "integration: auto-retry-on-flaky" do
+    @tag :integration
+    test "flaky failure heals to green and is surfaced, not hidden" do
+      {test_file, cleanup} = flaky_fixture()
+      marker = Path.join(System.tmp_dir!(), "flaky_marker_#{System.unique_integer([:positive])}")
+      File.rm(marker)
+
+      try do
+        {output, exit_code} = run_mix_test_json_with_env([test_file], [{"FLAKY_MARKER", marker}])
+
+        assert exit_code == 0, "Expected heal-to-green exit 0. Output: #{output}"
+        assert {:ok, json} = decode_json(output)
+        assert json["summary"]["result"] == "passed"
+        assert json["summary"]["failed"] == 0
+        assert json["summary"]["flaky"] == 1
+        # The flaky test is named, never swept away.
+        assert [flaky] = json["flaky"]
+        assert flaky["name"] =~ "heals on retry"
+        assert json["retry"] == %{"ran" => true, "passes" => 1, "retried" => 1, "confirmed" => 0, "flaky" => 1}
+      after
+        cleanup.()
+        File.rm(marker)
+      end
+    end
+
+    @tag :integration
+    test "a genuine hard failure stays red after retry" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule AutoRetryHardFailTest do
+          use ExUnit.Case
+          test "always fails" do
+            assert 1 == 2
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file])
+
+        assert exit_code != 0, "Expected confirmed failure to stay red. Output: #{output}"
+        assert {:ok, json} = decode_json(output)
+        assert json["summary"]["result"] == "failed"
+        assert json["summary"]["failed"] == 1
+        assert json["summary"]["flaky"] == 0
+        assert length(json["tests"]) == 1
+        refute Map.has_key?(json, "flaky")
+        assert json["retry"]["confirmed"] == 1
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "a green suite runs once and adds no retry metadata" do
+      {test_file, cleanup} =
+        create_temp_test_file("""
+        defmodule AutoRetryGreenTest do
+          use ExUnit.Case
+          test "passes" do
+            assert true
+          end
+        end
+        """)
+
+      try do
+        {output, exit_code} = run_mix_test_json([test_file])
+
+        assert exit_code == 0
+        assert {:ok, json} = decode_json(output)
+        assert json["summary"]["result"] == "passed"
+        # No second run happened: no retry block, no flaky key.
+        refute Map.has_key?(json, "retry")
+        refute Map.has_key?(json, "flaky")
+      after
+        cleanup.()
+      end
+    end
+
+    @tag :integration
+    test "--no-retry reports the raw first run with no retry metadata" do
+      {test_file, cleanup} = flaky_fixture()
+      marker = Path.join(System.tmp_dir!(), "flaky_marker_#{System.unique_integer([:positive])}")
+      File.rm(marker)
+
+      try do
+        {output, exit_code} = run_mix_test_json_with_env([test_file, "--no-retry"], [{"FLAKY_MARKER", marker}])
+
+        # Opt-out: the flaky test is reported as a plain failure, no healing.
+        assert exit_code != 0, "Expected --no-retry to leave the failure red. Output: #{output}"
+        assert {:ok, json} = decode_json(output)
+        assert json["summary"]["result"] == "failed"
+        refute Map.has_key?(json, "retry")
+        refute Map.has_key?(json, "flaky")
+      after
+        cleanup.()
+        File.rm(marker)
+      end
+    end
+  end
+
   describe "focused_run?/1 helper" do
     test "detects .exs file targeting" do
       assert focused_run?(["test/foo_test.exs"])
@@ -1283,6 +1391,10 @@ defmodule Mix.Tasks.Test.JsonTest do
     extract_json_opts(rest, [{:no_warn, true} | opts], remaining)
   end
 
+  defp extract_json_opts(["--no-retry" | rest], opts, remaining) do
+    extract_json_opts(rest, [{:retry, false} | opts], remaining)
+  end
+
   defp extract_json_opts(["--cover" | rest], opts, remaining) do
     extract_json_opts(rest, [{:cover, true} | opts], remaining)
   end
@@ -1313,6 +1425,29 @@ defmodule Mix.Tasks.Test.JsonTest do
     File.write!(path, content)
     cleanup = fn -> File.rm(path) end
     {path, cleanup}
+  end
+
+  # A deterministically-flaky fixture: fails the first run (no marker file yet),
+  # passes the retry (marker now exists). The marker persists across the
+  # in-process run 1 and the `--failed` retry subprocess via a shared tmp path
+  # passed through the FLAKY_MARKER env var.
+  defp flaky_fixture do
+    create_temp_test_file("""
+    defmodule AutoRetryFlakyHealsTest do
+      use ExUnit.Case
+
+      test "heals on retry" do
+        marker = System.get_env("FLAKY_MARKER")
+
+        if marker && File.exists?(marker) do
+          assert true
+        else
+          if marker, do: File.write!(marker, "x")
+          flunk("first run fails on purpose")
+        end
+      end
+    end
+    """)
   end
 
   # Helper to run mix test.json as a shell command
