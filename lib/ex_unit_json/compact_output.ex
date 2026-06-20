@@ -116,6 +116,4 @@ defmodule ExUnitJSON.CompactOutput do
     |> List.first()
     |> String.trim()
   end
-
-  defp extract_first_error_line([]), do: ""
 end

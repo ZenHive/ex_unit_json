@@ -224,9 +224,6 @@ defmodule ExUnitJSON.Coverage do
           source when is_list(source) -> List.to_string(source)
           source when is_binary(source) -> source
         end
-
-      _ ->
-        nil
     end
   rescue
     # Module might not be loaded or might not have module_info
