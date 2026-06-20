@@ -41,8 +41,8 @@ defmodule ExUnitJSON.MixProject do
       {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2.0", only: [:dev, :test], runtime: false},
-      {:tidewave, "~> 0.5.6", only: :dev},
-      {:bandit, "~> 1.11.1", only: :dev},
+      {:tidewave, "~> 0.6.0", only: :dev},
+      {:bandit, "~> 1.12.0", only: :dev},
       {:styler, "~> 1.11.0", only: [:dev, :test], runtime: false},
       {:doctor, "~> 0.23.0", only: :dev, runtime: false}
     ]
