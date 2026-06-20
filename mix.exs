@@ -44,7 +44,11 @@ defmodule ExUnitJSON.MixProject do
       {:tidewave, "~> 0.6.0", only: :dev},
       {:bandit, "~> 1.12.0", only: :dev},
       {:styler, "~> 1.11.0", only: [:dev, :test], runtime: false},
-      {:doctor, "~> 0.23.0", only: :dev, runtime: false}
+      {:doctor, "~> 0.23.0", only: :dev, runtime: false},
+      # Analyzer trio (VibeKit baseline)
+      {:ex_slop, "~> 0.4.2", only: [:dev, :test], runtime: false},
+      {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
+      {:reach, "~> 2.7", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -52,8 +56,31 @@ defmodule ExUnitJSON.MixProject do
     [
       tidewave: [
         "run --no-halt -e 'Agent.start(fn -> Bandit.start_link(plug: Tidewave, port: 4004) end)'"
+      ],
+      ci: [
+        "compile --warnings-as-errors",
+        "format --check-formatted",
+        "credo --strict",
+        "sobelow --skip --exit",
+        "doctor",
+        "ex_dna --max-clones 0",
+        "reach.check --arch --smells",
+        "dialyzer",
+        # test.json guards on MIX_ENV=test; alias steps inherit the top-level
+        # (dev) env, so run this step as a subprocess with MIX_ENV=test.
+        &test_json_cover/1
       ]
     ]
+  end
+
+  defp test_json_cover(_args) do
+    {_out, status} =
+      System.cmd("mix", ["test.json", "--cover", "--cover-threshold", "90"],
+        env: [{"MIX_ENV", "test"}],
+        into: IO.stream(:stdio, :line)
+      )
+
+    if status != 0, do: Mix.raise("mix test.json failed (exit #{status})")
   end
 
   defp description do

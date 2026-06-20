@@ -26,6 +26,10 @@ mix sobelow
 mix dialyzer.json --quiet
 mix doctor
 mix docs
+
+# Full quality gate (compile-warnings, format, credo+ex_slop, sobelow, doctor,
+# ex_dna clones, reach arch+smells, dialyzer, test.json --cover)
+mix ci
 ```
 
 ## Architecture
