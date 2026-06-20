@@ -6,7 +6,15 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ## [Unreleased]
 
+---
+
+## [0.5.1] (2026-06-21)
+
 ### Bug Fixes
+
+**Compile warnings no longer leak into subprocess output**
+
+Removed two unreachable function clauses — a dead `extract_first_error_line([])` clause (the sole caller guards a non-empty list) and an unreachable `_ ->` branch in `get_module_source/1` (`module_info(:compile)` always returns a list). Under `--warnings-as-errors` these emitted compiler output that polluted subprocess stdout, breaking the golden tests (which decode that output as JSON) and the `--quiet` integration test.
 
 **Retry: `setup_all` casualties (invalid tests) now resolve against the retry run**
 
@@ -45,6 +53,7 @@ The internal `--exclude coverage_unit` flag no longer makes the run look user-fo
 - Mix task option-parsing tests now exercise the production parser (`Mix.Tasks.Test.Json.parse_json_opts/1`) instead of a copied implementation
 - `ExUnitJSON.Config` `:hint` typespec corrected (`String.t()`, not `boolean()`)
 - Schema documentation: `"invalid"` test state, `module_failures` shape, and top-level `hint` key documented; stale coverage examples corrected
+- Dev-only deps bumped: bandit 1.11→1.12, tidewave 0.5.6→0.6.0 (the latter drops the transitive `req` dependency). No effect on consumers — ExUnitJSON ships with no runtime dependencies.
 
 ---
 
