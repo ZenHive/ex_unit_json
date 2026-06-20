@@ -12,6 +12,7 @@ ExUnitJSON provides structured JSON output from `mix test` for use with AI edito
 - **AI-optimized default**: Shows only failures (use `--all` for all tests)
 - **Automatic retry-on-flaky** (default): re-runs failed tests once; failures that heal are reported as `flaky` instead of blocking (`--no-retry` to opt out)
 - **Code coverage** with `--cover` and **coverage gating** with `--cover-threshold N`
+- **Failure-only message tracing** with `@tag trace_messages` — a flight recorder that attaches the inter-process message flow to failing tests
 - Detailed failure information with assertion values and stacktraces
 - Filtering: `--summary-only`, `--first-failure`, `--filter-out`, `--group-by-error`
 - File output: `--output results.json`
@@ -99,6 +100,46 @@ mix test.json --quiet --cover --cover-threshold 80
 ```
 
 Coverage output includes total percentage, per-module breakdown, and uncovered line numbers. Coverage cannot be combined with `--compact` (a warning is printed and coverage data is omitted). See [full documentation](https://hexdocs.pm/ex_unit_json) for schema details.
+
+### Message Tracing (Flight Recorder)
+
+Opt-in capture of the inter-process messages that led to a failure. Wire the setup callback once into your shared `ExUnit.Case` template:
+
+```elixir
+defmodule MyApp.Case do
+  use ExUnit.CaseTemplate
+
+  using do
+    quote do
+      setup {ExUnitJSON.Trace, :setup}
+    end
+  end
+end
+```
+
+Then opt a test or module in with a tag:
+
+```elixir
+@moduletag trace_messages: true     # whole module
+@tag trace_messages: true           # one test
+@tag trace_messages: 200            # one test, ring buffer of 200 events
+```
+
+While a tagged test runs, `send`/`receive` traffic of its process tree is recorded into a bounded ring buffer. **Only failing tests** emit a `"trace"` block (passing tests discard it); without the tag the setup is a zero-cost no-op.
+
+```json
+"trace": {
+  "messages": [
+    {"t_us": 12, "dir": "send", "from": "#PID<0.310.0>", "to": "#PID<0.311.0>", "msg": "{:place_order, %{...}}"},
+    {"t_us": 45, "dir": "recv", "pid": "#PID<0.310.0>", "msg": "{:error, :timeout}"}
+  ],
+  "mailboxes": [{"pid": "#PID<0.311.0>", "registered": "MyServer", "messages": ["..."], "approx": true}],
+  "overflow": false,
+  "dropped": 0
+}
+```
+
+The message flow is the reliable signal; `mailboxes` is a best-effort, `approx`-labeled snapshot of processes still alive near the failure (a dead process's pending mailbox cannot be recovered on the BEAM). `overflow: true` means a hard per-test event budget was hit and tracing stopped early. Requires OTP 27+ (already implied by `:json`).
 
 ### Using with jq
 

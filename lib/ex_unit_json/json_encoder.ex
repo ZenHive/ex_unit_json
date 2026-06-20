@@ -83,6 +83,57 @@ defmodule ExUnitJSON.JSONEncoder do
   end
 
   @doc """
+  Encodes a test struct and attaches captured message-trace data (if any).
+
+  `trace_data` is the map produced by `ExUnitJSON.Trace.Recorder` (or `nil`). When
+  present, a `"trace"` key is added alongside `failures`. Used by the formatter for
+  failing tests that opted into `@tag trace_messages`.
+  """
+  @spec encode_test(test(), map() | nil) :: map()
+  def encode_test(%ExUnit.Test{} = test, nil), do: encode_test(test)
+
+  def encode_test(%ExUnit.Test{} = test, trace_data) when is_map(trace_data) do
+    test
+    |> encode_test()
+    |> Map.put(:trace, encode_trace(trace_data))
+  end
+
+  @doc false
+  # Encodes recorder trace data to a JSON-safe map.
+  @spec encode_trace(map()) :: map()
+  defp encode_trace(%{messages: messages, mailboxes: mailboxes, overflow: overflow, dropped: dropped}) do
+    %{
+      messages: Enum.map(messages, &encode_trace_message/1),
+      mailboxes: Enum.map(mailboxes, &encode_mailbox/1),
+      overflow: overflow,
+      dropped: dropped
+    }
+  end
+
+  @doc false
+  defp encode_trace_message(%{dir: :send, from: from, to: to, msg: msg, t_us: t_us}) do
+    %{dir: "send", from: inspect(from), to: inspect(to), msg: truncate_and_inspect(msg), t_us: t_us}
+  end
+
+  defp encode_trace_message(%{dir: :receive, pid: pid, msg: msg, t_us: t_us}) do
+    %{dir: "recv", pid: inspect(pid), msg: truncate_and_inspect(msg), t_us: t_us}
+  end
+
+  @doc false
+  defp encode_mailbox(%{pid: pid, registered: registered, messages: messages, approx: approx}) do
+    %{
+      pid: inspect(pid),
+      registered: encode_registered(registered),
+      messages: Enum.map(messages, &truncate_and_inspect/1),
+      approx: approx
+    }
+  end
+
+  @doc false
+  defp encode_registered(nil), do: nil
+  defp encode_registered(name) when is_atom(name), do: to_string(name)
+
+  @doc """
   Encodes a test state to a string representation.
 
   ## State mappings

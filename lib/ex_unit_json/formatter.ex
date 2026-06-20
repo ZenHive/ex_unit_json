@@ -31,6 +31,7 @@ defmodule ExUnitJSON.Formatter do
   alias ExUnitJSON.ErrorGroups
   alias ExUnitJSON.Filters
   alias ExUnitJSON.JSONEncoder
+  alias ExUnitJSON.Trace.Store
 
   defstruct [:seed, :start_time, tests: [], modules: [], opts: []]
 
@@ -74,6 +75,10 @@ defmodule ExUnitJSON.Formatter do
       :logger.set_handler_config(:default, :level, :error)
     end
 
+    # Owns the cross-process handoff table for @tag trace_messages. Idempotent —
+    # a traced test's setup may have started it already.
+    Store.ensure_started()
+
     {:ok, %__MODULE__{opts: merged_opts, start_time: System.monotonic_time(:microsecond)}}
   end
 
@@ -84,7 +89,7 @@ defmodule ExUnitJSON.Formatter do
   end
 
   def handle_cast({:test_finished, %ExUnit.Test{} = test}, state) do
-    encoded_test = JSONEncoder.encode_test(test)
+    encoded_test = encode_test_with_trace(test)
     {:noreply, %{state | tests: [encoded_test | state.tests]}}
   end
 
@@ -115,6 +120,9 @@ defmodule ExUnitJSON.Formatter do
 
     write_output(output, Config.output_path())
 
+    # Drop any trace entries left by tests that were never read (bounds memory).
+    Store.clear()
+
     {:noreply, state}
   end
 
@@ -141,6 +149,25 @@ defmodule ExUnitJSON.Formatter do
   end
 
   # Private helpers
+
+  @doc false
+  # Encodes a test, attaching captured message-trace data for failing tests that
+  # opted in via @tag trace_messages. The buffer is always taken from the Store
+  # (cleanup), but only emitted on failure — passing tests discard it (flight
+  # recorder). Untagged tests skip the Store lookup entirely.
+  @spec encode_test_with_trace(ExUnit.Test.t()) :: map()
+  defp encode_test_with_trace(%ExUnit.Test{} = test) do
+    if Map.get(test.tags, :trace_messages) do
+      trace_data = Store.take({test.module, test.name})
+
+      case test.state do
+        {:failed, _failures} -> JSONEncoder.encode_test(test, trace_data)
+        _other -> JSONEncoder.encode_test(test)
+      end
+    else
+      JSONEncoder.encode_test(test)
+    end
+  end
 
   @doc false
   # Encodes a module failure (from setup_all) to a JSON-safe map

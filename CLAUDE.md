@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ExUnitJSON (v0.4.3) is an Elixir library published to Hex.pm that provides AI-friendly JSON test output for ExUnit. It's a drop-in replacement for `mix test` via `mix test.json`, outputting structured JSON for AI editors like Claude Code. No runtime dependencies — uses Elixir 1.18+ built-in `:json` module.
+ExUnitJSON (v0.6.0) is an Elixir library published to Hex.pm that provides AI-friendly JSON test output for ExUnit. It's a drop-in replacement for `mix test` via `mix test.json`, outputting structured JSON for AI editors like Claude Code. No runtime dependencies — uses Elixir 1.18+ built-in `:json` module.
 
 ## Commands
 
@@ -53,6 +53,9 @@ mix test.json [flags]
 | `ExUnitJSON.ErrorGroups` | Groups failures by first line of error message for `--group-by-error` | No |
 | `ExUnitJSON.Coverage` | Wraps Erlang `:cover` module for per-module coverage with uncovered line numbers | Yes (:cover) |
 | `ExUnitJSON.CompactOutput` | JSONL format with minimal keys (`f`, `n`, `s`, `e`, `x`) for `--compact` | No |
+| `ExUnitJSON.Trace` | Test-side `setup` callback for `@tag trace_messages`. Starts a recorder tracing the test process tree | Yes (:trace, on_exit) |
+| `ExUnitJSON.Trace.Recorder` | Per-test tracer process. Ring-buffers send/receive via OTP-27 trace sessions; snapshots mailboxes; writes to Store on test death | Yes (:trace, process) |
+| `ExUnitJSON.Trace.Store` | Registered owner of a named ETS table handing trace data from test process to formatter | Yes (ETS) |
 | `Mix.Tasks.Test.Json` | Mix task entry point. Parses flags, manages coverage lifecycle, delegates to `mix test` | Yes (subprocess) |
 
 ### Key Design Patterns

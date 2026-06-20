@@ -8,6 +8,18 @@ Completed roadmap tasks. For upcoming work, see [ROADMAP.md](ROADMAP.md).
 
 ---
 
+## [0.6.0] (2026-06-21)
+
+### Features
+
+**Failure-only BEAM message tracing (`@tag trace_messages`)**
+
+Opt-in "flight recorder" for inter-process messages. Add `setup {ExUnitJSON.Trace, :setup}` to your shared `ExUnit.Case` template, then tag the tests (or modules) you want traced with `@tag trace_messages: true` (or an integer to size the ring buffer). While a tagged test runs, the `send`/`receive` traffic of its process tree is captured into a bounded ring buffer via OTP-27 dynamic trace sessions (`:trace.session_create`). If the test **fails**, the JSON for that test gains a `"trace"` block — the message flow with relative timestamps, plus a best-effort, `approx`-labeled mailbox snapshot of still-alive processes and an `overflow` marker; if the test **passes**, the buffer is discarded. Without the tag, the `setup` callback is a zero-cost no-op, so it is safe to wire globally.
+
+Tracing covers the test process and the ExUnit test supervisor (so `start_supervised/2` children are included), is isolated per test via dynamic sessions (no collision with `:dbg`/`recon`/Observer), and is bounded both by the ring size and a hard per-test event budget so a chatty process tree cannot flood the recorder. The dead test process's own pending mailbox is *not* reconstructed — that is unrecoverable on the BEAM, and the message ring is the reliable signal. Requires OTP 27+ (already implied by the library's use of the built-in `:json` module). No new runtime dependencies.
+
+---
+
 ## [0.5.1] (2026-06-21)
 
 ### Bug Fixes

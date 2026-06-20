@@ -28,9 +28,9 @@
 - No external dependencies for core functionality
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 2 — Future Enhancements (9 of 19 done · 0 in progress)
+**Focus phase:** 2 — Future Enhancements (10 of 20 done · 0 in progress)
 
-**Last shipped:** Task 30 — Automatic retry-on-flaky (default ON) on 2026-06-01
+**Last shipped:** Task 31 — BEAM message flight-recorder (@tag trace_messages) on 2026-06-20
 
 **Up next:** Task 20 — Consistent failure_message field (Schema v2) [D:2/B:7/U:7 → Eff:3.5] 🎯
 <!-- FOCUS:END -->
@@ -86,6 +86,7 @@ shipped across the v0.1.x–v0.5.0 line; pending features sorted by efficiency.
 | Task 28 | ⬜ | 🎁 **future** · Custom output templates [D:6/B:4/U:4 → Eff:0.67] ⚠️ |
 | Task 29 | ⬜ | 🎁 **future** · Optional Jason fallback [D:4/B:5/U:5 → Eff:1.25] 📋 |
 | Task 30 | ✅ | 🎁 **failed_iteration** · Automatic retry-on-flaky (default ON) [D:7/B:9/U:9 → Eff:1.29] 📋 |
+| Task 31 | ✅ | 🎁 **future** · BEAM message flight-recorder (@tag trace_messages) [D:7/B:6/U:5 → Eff:0.79] ⚠️ |
 <!-- TASKS:END -->
 
 ---

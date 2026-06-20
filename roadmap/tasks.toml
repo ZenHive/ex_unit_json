@@ -467,3 +467,20 @@ delivered_by = "claude"
 created_at = "2026-06-01"
 scored_at = "2026-06-01"
 done_at = "2026-06-01"
+
+[[task]]
+id = 31
+phase = 2
+bundle = "future"
+status = "done"
+title = "BEAM message flight-recorder (@tag trace_messages)"
+scores = { d = 7, b = 6, u = 5 }
+acceptance_criteria = ["Traced failing test emits non-empty trace.messages in JSON", "Traced passing test emits no trace key", "Non-traced failing test output unchanged", "Two concurrent traced failing tests do not cross-contaminate messages", "No new runtime deps; uses :json and OTP :trace", "mix format/credo/dialyzer/doctor/sobelow clean on touched files; >=80% coverage on new modules"]
+out_of_scope = ["Dead test-process pending-mailbox reconstruction", "Global --trace-failures flag", "User-configurable match-spec message filtering"]
+body = "Opt-in failure-only inter-process message tracing for mix test.json. A test-side `setup ExUnitJSON.Trace` callback, activated per test/module by `@tag trace_messages: true` (or an integer for ring size), traces send/receive of the test process tree into a bounded ring buffer using OTP-27 dynamic trace sessions (:trace.session_create). On a FAILING test the formatter emits a `trace` block (messages with timestamps, best-effort live-process mailbox snapshots labeled approx, overflow marker); on a passing test the buffer is discarded (flight-recorder). Trace test pid + ExUnit test supervisor (start_supervised children). Dedicated ETS Store owner process for the test->formatter handoff. Hard event budget to bound recorder mailbox. Cut for v1: dead-process mailbox reconstruction (unsound on BEAM), global --trace-failures flag, user match-spec filtering. Distinct mechanism from Task 26 (captured Logger logs)."
+implemented = "Added ExUnitJSON.Trace (setup callback), Trace.Recorder (OTP-27 dynamic-session tracer with ring buffer + event budget + mailbox snapshot), Trace.Store (ETS handoff); Formatter init/test_finished/suite_finished wiring; JSONEncoder.encode_test/2 trace block. Tests in trace_test.exs + subprocess integration. Docs: README, CHANGELOG 0.6.0, CLAUDE.md."
+delivered_by = "claude-opus-4-8"
+created_at = "2026-06-20"
+started_at = "2026-06-20"
+scored_at = "2026-06-20"
+done_at = "2026-06-20"
