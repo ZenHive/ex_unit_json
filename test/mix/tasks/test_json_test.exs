@@ -1437,6 +1437,65 @@ defmodule Mix.Tasks.Test.JsonTest do
   end
 
   # Helper to run mix test.json as a shell command
+  describe "message tracing (@tag trace_messages) end-to-end" do
+    @describetag :integration
+
+    test "failing traced test emits trace.messages; passing one does not" do
+      fixture = write_trace_fixture()
+
+      try do
+        {output, _exit} = run_mix_test_json([fixture, "--all"])
+        {:ok, json} = decode_json(output)
+        tests = Map.new(json["tests"], &{&1["name"], &1})
+
+        failing = tests["test failing traced exchange"]
+        assert failing["state"] == "failed"
+        messages = get_in(failing, ["trace", "messages"])
+        assert is_list(messages) and messages != []
+        # the request/reply flow is captured
+        assert Enum.any?(messages, &(&1["msg"] =~ "pong"))
+
+        passing = tests["test passing traced exchange"]
+        assert passing["state"] == "passed"
+        refute Map.has_key?(passing, "trace")
+      after
+        File.rm(fixture)
+      end
+    end
+  end
+
+  defp write_trace_fixture do
+    path = Path.join(System.tmp_dir!(), "trace_fixture_#{:erlang.unique_integer([:positive])}_test.exs")
+
+    File.write!(path, """
+    defmodule TraceFixtureTest do
+      use ExUnit.Case, async: false
+      setup {ExUnitJSON.Trace, :setup}
+
+      defp exchange do
+        parent = self()
+        pid = spawn(fn -> receive do {:ping, from} -> send(from, :pong) end end)
+        send(pid, {:ping, parent})
+        assert_receive :pong
+      end
+
+      @tag trace_messages: true
+      test "failing traced exchange" do
+        exchange()
+        flunk("intentional failure for trace capture")
+      end
+
+      @tag trace_messages: true
+      test "passing traced exchange" do
+        exchange()
+        assert true
+      end
+    end
+    """)
+
+    path
+  end
+
   defp run_mix_test_json(args) do
     run_mix_test_json_with_env(args, [])
   end
