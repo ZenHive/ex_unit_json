@@ -1,6 +1,6 @@
 schema_version = 2
 project = "ex_unit_json"
-default_branch = "development"
+default_branch = "main"
 vision = "AI-friendly JSON test output for ExUnit — a drop-in 'mix test.json' that lets AI editors parse and reason about test results without grep/tail/sed."
 
 [focus]
