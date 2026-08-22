@@ -1,4 +1,2 @@
-
-Traversal.FileModule: Directory Traversal in `File.write`,lib/ex_unit_json/formatter.ex:167,59F58A7
-Traversal.FileModule: Directory Traversal in `File.write`,lib/ex_unit_json/formatter.ex:181,43C0271
-Traversal.FileModule: Directory Traversal in `File.read`,lib/ex_unit_json/formatter.ex:171,59877E7
+Traversal.FileModule: Directory Traversal in `File.read`,lib/ex_unit_json/formatter.ex:199,3986163
+Traversal.FileModule: Directory Traversal in `File.write`,lib/ex_unit_json/formatter.ex:207,24D192E

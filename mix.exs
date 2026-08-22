@@ -38,17 +38,17 @@ defmodule ExUnitJSON.MixProject do
       # Dev/Test (pinned to current latest)
       {:ex_doc, "~> 0.40.3", only: :dev, runtime: false},
       {:credo, "~> 1.7.18", only: [:dev, :test], runtime: false},
-      {:sobelow, "~> 0.14.1", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.15.0", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4.7", only: [:dev, :test], runtime: false},
       {:dialyzer_json, "~> 0.2.0", only: [:dev, :test], runtime: false},
-      {:tidewave, "~> 0.6.0", only: :dev},
-      {:bandit, "~> 1.12.0", only: :dev},
-      {:styler, "~> 1.11.0", only: [:dev, :test], runtime: false},
+      {:tidewave, "~> 0.9.0", only: :dev},
+      {:bandit, "~> 1.12.5", only: :dev},
+      {:styler, "~> 1.12.2", only: [:dev, :test], runtime: false},
       {:doctor, "~> 0.23.0", only: :dev, runtime: false},
       # Analyzer trio (VibeKit baseline)
-      {:ex_slop, "~> 0.4.2", only: [:dev, :test], runtime: false},
-      {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
-      {:reach, "~> 2.7", only: [:dev, :test], runtime: false}
+      {:ex_slop, "~> 0.4.4", only: [:dev, :test], runtime: false},
+      {:ex_dna, "~> 1.5.4", only: [:dev, :test], runtime: false},
+      {:reach, "~> 2.8", only: [:dev, :test], runtime: false}
     ]
   end
 
