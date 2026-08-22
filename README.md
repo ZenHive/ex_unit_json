@@ -26,7 +26,7 @@ Add `ex_unit_json` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:ex_unit_json, "~> 0.4", only: [:dev, :test], runtime: false}
+    {:ex_unit_json, "~> 0.6", only: [:dev, :test], runtime: false}
   ]
 end
 ```
