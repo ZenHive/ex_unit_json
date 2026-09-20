@@ -1,5 +1,8 @@
 # CLAUDE.md
 
+@~/.claude/includes/verification-policy.md
+@~/.claude/includes/critical-rules.md
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
@@ -90,4 +93,3 @@ mix test.json [flags]
   and across-instances are intentionally omitted. Re-add an @-import only if Opus
   starts failing on that surface. See ~/.claude/setup-guide.md.
 -->
-@~/.claude/includes/critical-rules.md
